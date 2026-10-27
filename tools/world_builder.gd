@@ -13,23 +13,23 @@ extends Node
 
 @export_group("Map")
 ## Map width/height in grass tiles (1 tile = 131 px). 30 ~= 3,900 px, 50 ~= 6,500 px.
-@export_range(4, 200, 1) var ground_tiles := 30
+@export_range(4, 200, 1) var ground_tiles := 80
 ## Same seed = same forest every rebuild. Change it for a different layout.
-@export var map_seed := 777
+@export var map_seed := 67
 
 @export_group("Forest")
 ## Radius of the open area around the campfire, in px.
-@export_range(0.0, 3000.0, 1.0, "suffix:px") var clearing := 380.0
+@export_range(0.0, 3000.0, 1.0, "suffix:px") var clearing := 300.0
 ## How gradually the forest thickens after the clearing edge, in px.
-@export_range(0.0, 2000.0, 1.0, "suffix:px") var clearing_fade := 220.0
+@export_range(0.0, 2000.0, 1.0, "suffix:px") var clearing_fade := 200.0
 ## Distance between candidate tree spots. Lower = denser forest (and more trees to draw).
-@export_range(30.0, 500.0, 1.0, "suffix:px") var tree_spacing := 92.0
+@export_range(30.0, 500.0, 1.0, "suffix:px") var tree_spacing := 150.0
 ## Random offset per tree so the forest doesn't look like a grid.
-@export_range(0.0, 250.0, 1.0, "suffix:px") var tree_jitter := 34.0
+@export_range(0.0, 250.0, 1.0, "suffix:px") var tree_jitter := 150.0
 ## Chance (0-1) a spot gets a tree where the forest is thickest.
-@export_range(0.0, 1.0, 0.01) var forest_fill := 0.72
+@export_range(0.0, 1.0, 0.01) var forest_fill := 1.0
 ## Size of thick/thin forest patches. Lower = bigger groves and bigger gaps.
-@export_range(0.0002, 0.02, 0.0001) var patch_frequency := 0.0025
+@export_range(0.0002, 0.02, 0.0001) var patch_frequency := 0.02
 
 @export_group("Spawn")
 ## Where the settler starts, relative to the campfire at the map centre.

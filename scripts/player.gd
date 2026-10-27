@@ -1,11 +1,12 @@
 extends CharacterBody2D
-## The settler. Movement with unlimited sprint, pixel-art sprite that switches
-## between up/down/right (left = mirrored right), a vision light that acts as
-## fog of war, and the following camera. Origin = feet.
+## The settler. Movement with unlimited sprint, pixel-art sprite in 8 directions
+## (up, up-right, right, down-right, down; the left side mirrors the right), a
+## vision light that acts as fog of war, and the following camera. Origin = feet.
 ##
 ## Run cycles come from the H3 videos (keyed, snapped back to the native pixel
 ## grid and the settler palette): assets/characters/settler_run_<dir>.png are
-## horizontal strips. Idle = the original still sprites.
+## horizontal strips. Idle = the original still sprites (diagonal idles are the
+## standing first frame of their H3 video).
 
 const WALK_SPEED := 120.0
 const SPRINT_SPEED := 200.0
@@ -14,6 +15,8 @@ const DEPTH_SQUASH := 0.85       # up/down moves a bit slower on screen (3/4 vie
 const TEX_UP := preload("res://assets/characters/settler_up.png")
 const TEX_DOWN := preload("res://assets/characters/settler_down.png")
 const TEX_RIGHT := preload("res://assets/characters/settler_right.png")
+const TEX_UP_RIGHT := preload("res://assets/characters/settler_up_right.png")
+const TEX_DOWN_RIGHT := preload("res://assets/characters/settler_down_right.png")
 
 ## Run strips: frame count, frame size and the offset that puts the feet on the
 ## node origin (lined up with the idle sprite so start/stop doesn't jump).
@@ -21,9 +24,13 @@ const RUN := {
 	"right": {"tex": preload("res://assets/characters/settler_run_right.png"), "frames": 29, "size": Vector2i(31, 47), "offset": Vector2(-15, -45), "cycle": 0.8},
 	"up": {"tex": preload("res://assets/characters/settler_run_up.png"), "frames": 16, "size": Vector2i(27, 48), "offset": Vector2(-13, -44), "cycle": 0.5},
 	"down": {"tex": preload("res://assets/characters/settler_run_down.png"), "frames": 12, "size": Vector2i(31, 45), "offset": Vector2(-16, -42), "cycle": 0.5},
+	"up_right": {"tex": preload("res://assets/characters/settler_run_up_right.png"), "frames": 16, "size": Vector2i(28, 48), "offset": Vector2(-12, -44), "cycle": 0.65},
+	"down_right": {"tex": preload("res://assets/characters/settler_run_down_right.png"), "frames": 18, "size": Vector2i(31, 47), "offset": Vector2(-16, -43), "cycle": 0.65},
 }
 ## "cycle" = seconds per full run cycle (two steps) at WALK_SPEED, per direction.
-## Higher = slower legs. Sprint plays faster automatically. Left uses "right".
+## Higher = slower legs. Sprint plays faster automatically. Each direction has
+## its own value. Left, up-left and down-left mirror right, up_right, down_right
+## (and share their cycle).
 
 var facing := Vector2.DOWN
 var light: PointLight2D
@@ -88,13 +95,11 @@ func _physics_process(_delta: float) -> void:
 
 
 func _update_sprite() -> void:
-	# Pick the view: sideways wins on diagonals.
-	var view := "right"
-	if absf(facing.x) >= absf(facing.y) * 0.9:
-		sprite.flip_h = facing.x < 0.0
-	else:
-		view = "up" if facing.y < 0.0 else "down"
-		sprite.flip_h = false
+	# 8 directions: pick the 45-degree sector of the facing direction.
+	# Sector 0 = right, then clockwise (screen y points down).
+	var sector := posmod(int(round(facing.angle() / (PI / 4.0))), 8)
+	var view: String = ["right", "down_right", "down", "down_right", "right", "up_right", "up", "up_right"][sector]
+	sprite.flip_h = sector >= 3 and sector <= 5     # left side mirrors the right
 	if _moving:
 		_play("run_" + view)
 		sprite.speed_scale = _speed / WALK_SPEED
@@ -128,8 +133,9 @@ func _apply_flip_offset() -> void:
 func _build_frames() -> SpriteFrames:
 	var sf := SpriteFrames.new()
 	sf.remove_animation("default")
-	for view: String in ["up", "down", "right"]:
-		var idle_tex: Texture2D = {"up": TEX_UP, "down": TEX_DOWN, "right": TEX_RIGHT}[view]
+	for view: String in RUN:
+		var idle_tex: Texture2D = {"up": TEX_UP, "down": TEX_DOWN, "right": TEX_RIGHT,
+				"up_right": TEX_UP_RIGHT, "down_right": TEX_DOWN_RIGHT}[view]
 		var idle: String = "idle_" + view
 		sf.add_animation(idle)
 		sf.add_frame(idle, idle_tex)

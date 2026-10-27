@@ -12,7 +12,7 @@ Don't Starve-style 3/4 camera. All art is drawn in code (no image assets yet).
 
 ## Decided
 - Art: pixel art generated in ChatGPT, snapped to real pixels with Pixel Snapper. Reference scale: settler 43 px tall; big trees 84–101 px; bush 49; stump 29; rock 21; grass tile 131x129. Camera zoom 3x.
-- Animation: H3 (ComfyUI, fl2va) for run cycles. Settler run cycles imported (right 29 frames, up 16, down 12; left = mirrored right). Pipeline: key out green, sample each video frame back onto the native pixel grid (~7.2–7.7x upscale), snap colours to the settler palette, pick the cleanest loop, align feet with the idle sprite.
+- Animation: H3 (ComfyUI, fl2va) for run cycles. Settler run cycles imported in 8 directions (right 29 frames, up 16, down 12, up_right 16, down_right 18; left side = mirrored right side). Diagonal idles = standing first frame of their video. Diagonals were sampled at ~7.4x so their size matches the older sprites (native grid in those videos was ~6.9x, which made him ~10% bigger). Pipeline: key out green, sample each video frame back onto the native pixel grid (~7.2–7.7x upscale), snap colours to the settler palette, pick the cleanest loop, align feet with the idle sprite.
 - Map is hand-painted in the editor for now (same map every round); generator kept as an option.
 - Werewolf is a **player** in the final game; we start with an **AI werewolf**.
 - The werewolf **escalates over time**: more power, clues and power-ups, so
@@ -36,7 +36,7 @@ Don't Starve-style 3/4 camera. All art is drawn in code (no image assets yet).
 ## Current state (prototype)
 - Hand-painted World in main.tscn: grass Ground layer (30x30 tiles), Props layer with a seeded pine-only forest around a central clearing, a Campfire at the centre (0,0), Spawn marker just south of it.
 - Props (trees, pine, bush, stump, rock) are scenes with trunk collision, a vision blocker (trees/bush), and fade when the player is behind them. Paintable via the Props TileMapLayer (scene tiles, 16 px grid).
-- Settler: AnimatedSprite2D built in code — idle stills + H3 run cycles (up/down/right, left mirrored), WASD, Shift sprint (unlimited, no stamina). Every run cycle is given its own `cycle` time in player.gd `RUN` (0.5 s by default) at walk speed and plays faster when sprinting.
+- Settler: AnimatedSprite2D built in code — idle stills + H3 run cycles in 8 directions (up/up_right/right/down_right/down, left side mirrored), WASD, Shift sprint (unlimited, no stamina). Every run cycle is given its own `cycle` time in player.gd `RUN` (0.5 s by default) at walk speed and plays faster when sprinting.
 - Fog of war via the player's vision light, fading to completely black. Tunables in the Inspector on the Main node (Fog group): fog_color, fog_darkness, vision_radius, fog_start, fog_density, vision_brightness, vision_tint, vision_squash, shadow_softness (also live-editable while running). Invisible walls + camera limits follow the painted ground.
 - Pines: 2.7–3.9x the original art (≈270–390 px, 6–9x the settler), each with its own size, hue/saturation/brightness and mirroring picked from its map position (scripts/pine.gd, tunables on the root of pine.tscn). Colour shift is done in prop_fade.gdshader via pine_material.tres.
 - Campfire: CPUParticles2D Fire/Core/Embers/Smoke + flickering PointLight2D that casts trunk shadows (scripts/campfire.gd: light_radius, light_energy, flicker_*).
@@ -44,7 +44,7 @@ Don't Starve-style 3/4 camera. All art is drawn in code (no image assets yet).
 
 ## Files
 - `main.tscn` — Main > World (y-sorted): Ground (TileMapLayer, grass), Props (TileMapLayer, scene tiles), Spawn (Marker2D).
-- `assets/characters/` — settler_up/down/right.png (idle), settler_run_up/down/right.png (horizontal run strips; frame sizes/offsets in player.gd `RUN`).
+- `assets/characters/` — settler_up/down/right/up_right/down_right.png (idle), settler_run_<same>.png (horizontal run strips; frame sizes/offsets in player.gd `RUN`).
 - `assets/props/` — prop PNGs + one .tscn per prop, props_tileset.tres, prop_material.tres + pine_material.tres + prop_fade.gdshader (shared fade, pine colour variance), campfire.png/.tscn.
 - `assets/tiles/` — grass.png + ground_tileset.tres.
 - `tools/world_builder.gd` — WorldBuilder node in main.tscn: set map size (ground_tiles), seed, clearing and forest density in the Inspector, click **Rebuild World**, save. Replaces the World node.
