@@ -33,6 +33,12 @@ var glow_scale := 1.0        # set by main.gd's day/night: dim glow in daylight
 
 func _ready() -> void:
 	add_to_group("interactables")
+	# Shade the fire pit / torch like every other prop: dark at night unless its
+	# own fire (or your light) is on it. Without this it showed in pitch black.
+	var sprite := get_node_or_null("Sprite") as Sprite2D
+	if sprite and sprite.material == null:
+		sprite.material = preload("res://assets/props/varied_material.tres")
+		sprite.self_modulate = Color(0.5, 0.5, 0.5, 0.5)     # = no colour change, no sway
 	_apply_lit()
 	_noise.seed = int(global_position.x * 13.0 + global_position.y)
 	_noise.frequency = 1.0

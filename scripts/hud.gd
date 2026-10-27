@@ -27,10 +27,15 @@ var _tool_slots: Array[Panel] = []
 var _tools_box: PanelContainer
 var _inv_panel: PanelContainer
 var _inv_slots: Array[Panel] = []
-var _drag_from := -1                 # backpack slot being dragged, -1 = none
+var _drag_from := -1                 # slot being dragged (see TOOL_BASE), -1 = none
 var _drag_icon: TextureRect          # follows the mouse while dragging
 var _drag_start := Vector2.ZERO
 var _press_slot := -1                # slot under the mouse when the button went down
+var _mouse_pos := Vector2(-1, -1)
+var _tip: PanelContainer             # item name under the mouse
+var _tip_label: Label
+## True while the Esc menu is open (main.gd): no dragging or tooltips then.
+var blocked := false
 var _prompt: Label
 var _hurt: ColorRect
 var _notes: Control
@@ -246,6 +251,7 @@ func current_tool() -> String:
 func _refresh_tools() -> void:
 	for i in _tool_slots.size():
 		_fill_slot(_tool_slots[i], tools[i], 0, i == selected_tool)
+		(_tool_slots[i].get_node("Icon") as TextureRect).modulate.a = 1.0
 
 
 # --- inventory -------------------------------------------------------------------
@@ -276,47 +282,83 @@ func _build_inventory() -> void:
 		grid.add_child(s)
 		_inv_slots.append(s)
 	_inv_panel.resized.connect(_place)
-	_inv_panel.gui_input.connect(_on_inv_input)
 	_drag_icon = TextureRect.new()
 	_drag_icon.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	_drag_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_drag_icon.visible = false
 	_drag_icon.z_index = 10
 	add_child(_drag_icon)
+	_build_tooltip()
 
 
-# --- dragging items in the backpack ---------------------------------------------
-# Hold the left button on an item and drag it onto another slot: it moves there
-# (swapping with what was there; the same item tops up that stack). Let go
-# outside the backpack and nothing changes.
+# --- dragging items (backpack and tools bar) --------------------------------------
+# Hold the left button on an item and drag it onto another slot, in the backpack
+# or the tools bar: it moves there (swapping with what was there; the same item
+# tops up that stack). The tools bar only takes tools. Let go anywhere else and
+# nothing changes. A plain click on a tools-bar slot selects that tool.
+# Read in _input (before the GUI) from the mouse events' own positions, so it
+# works however the panels pass clicks along, and the click never reaches the world.
+# Slots are numbered: backpack i = i, tools bar j = TOOL_BASE + j.
 
-func _on_inv_input(event: InputEvent) -> void:
-	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
-		if event.pressed:
-			_press_slot = _slot_at(event.global_position)
-			_drag_start = event.global_position
-		else:
-			if _drag_from >= 0:
-				var to := _slot_at(event.global_position)
-				if to >= 0 and inventory:
-					inventory.move(_drag_from, to)
+const TOOL_BASE := 100
+
+func _input(event: InputEvent) -> void:
+	if event is InputEventMouse:
+		_mouse_pos = event.position                 # viewport (stretched) coordinates, same as the slots
+	if not visible or blocked:
+		if _drag_from >= 0:
 			_end_drag()
+		return
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
+		var at := _mouse()
+		if event.pressed:
+			var slot := _slot_at(at)
+			if slot < 0:
+				return                                    # not on a slot: the game gets the click
+			_press_slot = slot
+			_drag_start = at
+			get_viewport().set_input_as_handled()
+		elif _press_slot >= 0 or _drag_from >= 0:
+			if _drag_from >= 0:
+				var to := _slot_at(at)
+				if to >= 0:
+					_drop(_drag_from, to)
+				_end_drag()
+			elif _press_slot >= TOOL_BASE and _slot_at(at) == _press_slot:
+				select_tool(_press_slot - TOOL_BASE)      # click on a tool = hold it
 			_press_slot = -1
-		_inv_panel.accept_event()
-	elif event is InputEventMouseMotion:
-		if _drag_from < 0 and _press_slot >= 0 and (event.button_mask & MOUSE_BUTTON_MASK_LEFT) \
-				and event.global_position.distance_to(_drag_start) > 4.0:
+			get_viewport().set_input_as_handled()
+	elif event is InputEventMouseMotion and _press_slot >= 0:
+		var at := _mouse()
+		if _drag_from < 0 and at.distance_to(_drag_start) > 4.0 and _slot_item(_press_slot) != "":
 			_begin_drag(_press_slot)
 		if _drag_from >= 0:
-			_drag_icon.global_position = (event.global_position - _drag_icon.size / 2.0).round()
-			_highlight_target(_slot_at(event.global_position))
+			_drag_icon.global_position = (at - _drag_icon.size / 2.0).round()
+			_highlight_target(_slot_at(at))
 
 
-func _begin_drag(i: int) -> void:
-	if inventory == null or i >= inventory.slots.size() or inventory.slots[i].is_empty():
-		return
-	_drag_from = i
-	var icon := _inv_slots[i].get_node("Icon") as TextureRect
+## Last mouse position seen in an input event (viewport coordinates).
+func _mouse() -> Vector2:
+	return _mouse_pos if _mouse_pos.x >= 0.0 else get_viewport().get_mouse_position()
+
+
+## Item id in a slot ("" = empty).
+func _slot_item(slot: int) -> String:
+	if slot >= TOOL_BASE:
+		return tools[slot - TOOL_BASE]
+	if inventory and slot < inventory.slots.size():
+		return inventory.slots[slot].get("id", "")
+	return ""
+
+
+func _slot_panel(slot: int) -> Panel:
+	return _tool_slots[slot - TOOL_BASE] if slot >= TOOL_BASE else _inv_slots[slot]
+
+
+func _begin_drag(slot: int) -> void:
+	_drag_from = slot
+	_tip.visible = false
+	var icon := _slot_panel(slot).get_node("Icon") as TextureRect
 	_drag_icon.texture = icon.texture
 	_drag_icon.size = icon.size
 	_drag_icon.visible = true
@@ -327,21 +369,101 @@ func _end_drag() -> void:
 	_drag_from = -1
 	_drag_icon.visible = false
 	_refresh_inventory()
+	_refresh_tools()
+
+
+## Moves what's in slot `from` onto slot `to` (both backpack or tools bar).
+func _drop(from: int, to: int) -> void:
+	if from == to:
+		return
+	var a := _slot_item(from)
+	var b := _slot_item(to)
+	if from < TOOL_BASE and to < TOOL_BASE:
+		inventory.move(from, to)                    # stacks, swaps
+		return
+	# Anything that ends up in the tools bar has to be a tool.
+	if to >= TOOL_BASE and not _is_tool(a):
+		return
+	if from >= TOOL_BASE and b != "" and not _is_tool(b):
+		return
+	if from >= TOOL_BASE and to >= TOOL_BASE:
+		tools[from - TOOL_BASE] = b
+		tools[to - TOOL_BASE] = a
+	elif from >= TOOL_BASE:                          # tools bar -> backpack
+		tools[from - TOOL_BASE] = b
+		inventory.slots[to] = {"id": a, "count": 1}
+		inventory.changed.emit()
+	else:                                            # backpack -> tools bar
+		tools[to - TOOL_BASE] = a
+		inventory.slots[from] = {"id": b, "count": 1} if b != "" else {}
+		inventory.changed.emit()
+	select_tool(selected_tool)                       # the tool in hand may have changed
+
+
+func _is_tool(id: String) -> bool:
+	return bool(Items.get_item(id).get("tool", false))
 
 
 func _highlight_target(to: int) -> void:
-	for i in _inv_slots.size():
-		var s: Dictionary = inventory.slots[i] if inventory and i < inventory.slots.size() else {}
-		_fill_slot(_inv_slots[i], s.get("id", ""), int(s.get("count", 0)), i == to and i != _drag_from)
-	(_inv_slots[_drag_from].get_node("Icon") as TextureRect).modulate.a = 0.3
+	_refresh_inventory()
+	_refresh_tools()
+	if to >= 0 and to != _drag_from:
+		var p := _slot_panel(to)
+		p.add_theme_stylebox_override("panel", _box(Color(0.14, 0.17, 0.14, 0.9), ACCENT, 0, 2))
+	(_slot_panel(_drag_from).get_node("Icon") as TextureRect).modulate.a = 0.3
 
 
-## Backpack slot under a screen position, or -1.
+## Slot under a screen position (backpack only while it's open), or -1.
 func _slot_at(pos: Vector2) -> int:
-	for i in _inv_slots.size():
-		if _inv_slots[i].get_global_rect().has_point(pos):
-			return i
+	if _inv_panel.visible:
+		for i in _inv_slots.size():
+			if _inv_slots[i].get_global_rect().has_point(pos):
+				return i
+	for j in _tool_slots.size():
+		if _tool_slots[j].get_global_rect().has_point(pos):
+			return TOOL_BASE + j
 	return -1
+
+
+# --- item name tooltip ------------------------------------------------------------
+
+func _build_tooltip() -> void:
+	_tip = PanelContainer.new()
+	var sb := _box(Color(0.06, 0.07, 0.07, 0.95), BORDER, 0, 1)
+	sb.content_margin_left = 7
+	sb.content_margin_right = 7
+	sb.content_margin_top = 2
+	sb.content_margin_bottom = 3
+	_tip.add_theme_stylebox_override("panel", sb)
+	_tip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_tip.z_index = 11
+	_tip.visible = false
+	_tip_label = Label.new()
+	_tip_label.add_theme_font_size_override("font_size", 14)
+	_tip_label.add_theme_color_override("font_color", Color(0.93, 0.86, 0.68))
+	_tip.add_child(_tip_label)
+	add_child(_tip)
+
+
+## Every frame: the name of the item under the mouse, just above the pointer.
+func _process(_delta: float) -> void:
+	if _tip == null:
+		return
+	var slot := _slot_at(_mouse()) if visible and not blocked and _drag_from < 0 else -1
+	var id := _slot_item(slot) if slot >= 0 else ""
+	if id == "":
+		_tip.visible = false
+		return
+	var text := Items.display_name(id)
+	if _tip_label.text != text:
+		_tip_label.text = text
+		_tip.reset_size()
+	var view := get_viewport().get_visible_rect().size
+	var pos := _mouse() + Vector2(12, -_tip.size.y - 6)
+	pos.x = clampf(pos.x, 4, view.x - _tip.size.x - 4)
+	pos.y = maxf(pos.y, 4)
+	_tip.position = pos.round()
+	_tip.visible = true
 
 
 ## Health box bottom left, tools bar centred on the bottom edge, backpack just

@@ -87,10 +87,16 @@ extends Node
 @export_range(0.0, 400.0, 1.0, "suffix:px") var campfire_space := 60.0
 
 @export_group("Ore")
-## Copper ore nodes per 1000 x 1000 px (rare: about one per two screens of
-## forest). Only in the forest, never near the camp clearing.
+## Single big copper deposits per 1000 x 1000 px. Only in the forest, never
+## near the camp clearing.
 @export_range(0.0, 10.0, 0.05) var ore_nodes := 0.5
-## Small copper deposits per 1000 x 1000 px (a bit more common than the big ones).
+## Clusters of copper deposits per 1000 x 1000 px (2-4 big and small ones together).
+@export_range(0.0, 10.0, 0.05) var ore_clusters := 0.3
+## Copper deposits per cluster: min (x) - max (y).
+@export var ore_cluster_size := Vector2(2, 4)
+## How far a copper cluster spreads from its middle (px; flattened for the 3/4 view).
+@export_range(40.0, 600.0, 5.0, "suffix:px") var ore_cluster_radius := 100.0
+## Single small copper deposits per 1000 x 1000 px (a bit more common than the big ones).
 @export_range(0.0, 10.0, 0.05) var small_ore_nodes := 0.6
 ## Share of small deposits placed inside a stone cluster (an ore vein in the rocks).
 @export_range(0.0, 1.0, 0.01) var small_ore_in_stone := 0.35
@@ -101,7 +107,9 @@ extends Node
 
 @export_group("Stone")
 ## Clusters of stone nodes per 1000 x 1000 px (in the forest, not in the clearing).
-@export_range(0.0, 10.0, 0.05) var stone_clusters := 0.25
+@export_range(0.0, 10.0, 0.05) var stone_clusters := 0.6
+## Single stone nodes per 1000 x 1000 px, scattered through the forest.
+@export_range(0.0, 10.0, 0.05) var stone_singles := 0.8
 ## Stone nodes per cluster: min (x) - max (y).
 @export var stone_cluster_size := Vector2(2, 5)
 ## How far a cluster spreads from its middle (px; flattened for the 3/4 view).
@@ -137,6 +145,8 @@ const PROPS_TILESET := "res://assets/props/props_tileset.tres"
 const CAMPFIRE := "res://assets/props/campfire.tscn"
 ## Stone node scenes: [name, chance weight, solid radius used when placing].
 const STONE_NODES := [["stone_node_c", 0.45, 26.0], ["stone_node_a", 0.3, 40.0], ["stone_node_b", 0.25, 34.0]]
+## Copper deposit scenes, same format (clusters mix big and small).
+const COPPER_NODES := [["copper_node", 0.4, 26.0], ["copper_node_small", 0.6, 18.0]]
 ## Per tree type, in ART pixels: [root half-width, visible trunk height below the
 ## canopy]. Used so trunks never visibly touch. Dead trees show their whole trunk.
 ## How close a tree trunk may stand to the map edge: [sides, top, bottom] (world
@@ -378,6 +388,8 @@ func _place_props(props: TileMapLayer, ground: TileMapLayer) -> int:
 				continue
 			if _put("copper_node_small", p, 18.0):
 				break
+	# Single stone nodes through the forest.
+	_place_singles(area, int(stone_singles * per), STONE_NODES, clearing + clearing_fade + stone_clearance)
 	for i in int(logs * per):
 		var p := _random_point(area)
 		if _rng.randf() < _forest(p):
@@ -476,40 +488,71 @@ func _place_stone_clusters(area: Rect2) -> void:
 	_stone_centers.clear()
 	var count := int(stone_clusters * area.get_area() / 1_000_000.0)
 	var min_r := clearing + clearing_fade + stone_clearance
-	var total_w := 0.0
-	for k in STONE_NODES:
-		total_w += k[1]
 	for i in count:
-		var c := Vector2.INF
-		for attempt in 12:
-			var p := _random_point(area.grow(-stone_cluster_radius))
-			if p.length() >= min_r and _rng.randf() < _forest(p) + 0.25:
-				c = p
-				break
+		var c := _cluster_centre(area, stone_cluster_radius, min_r)
 		if c == Vector2.INF:
 			continue
 		_stone_centers.append(c)
-		var n := _rng.randi_range(int(stone_cluster_size.x), int(maxf(stone_cluster_size.y, stone_cluster_size.x)))
-		var placed := 0
-		for j in n * 4:                                  # a few tries per node
-			if placed >= n:
-				break
-			var roll := _rng.randf() * total_w
-			var kind: Array = STONE_NODES[0]
-			for k in STONE_NODES:
-				roll -= k[1]
-				if roll <= 0.0:
-					kind = k
-					break
-			var q := c
-			if placed > 0:
-				var d := _rng.randf_range(0.35, 1.0) * stone_cluster_radius
-				q = c + Vector2.from_angle(_rng.randf() * TAU) * Vector2(d, d * 0.6)
-			if area.has_point(q) and _put(kind[0], q, kind[2]):
-				placed += 1
+		_place_cluster(area, c, STONE_NODES, stone_cluster_size, stone_cluster_radius)
 		for k in _rng.randi_range(int(stone_cluster_pebbles.x), int(maxf(stone_cluster_pebbles.y, stone_cluster_pebbles.x))):
 			var d := _rng.randf_range(0.2, 1.2) * stone_cluster_radius
 			_put("pebble", c + Vector2.from_angle(_rng.randf() * TAU) * Vector2(d, d * 0.6), 0.0)
+	# Copper clusters (big and small deposits together), also before the trees.
+	var ore_min := clearing + clearing_fade + ore_clearance
+	for i in int(ore_clusters * area.get_area() / 1_000_000.0):
+		var c := _cluster_centre(area, ore_cluster_radius, ore_min)
+		if c != Vector2.INF:
+			_place_cluster(area, c, COPPER_NODES, ore_cluster_size, ore_cluster_radius)
+
+
+## A forest spot for a cluster's middle (at least min_r from the map centre), or INF.
+func _cluster_centre(area: Rect2, radius: float, min_r: float) -> Vector2:
+	for attempt in 12:
+		var p := _random_point(area.grow(-radius))
+		if p.length() >= min_r and _rng.randf() < _forest(p) + 0.25:
+			return p
+	return Vector2.INF
+
+
+## n (size.x - size.y) nodes of the weighted kinds around c: the first in the
+## middle, the others within radius (flattened ellipse), never overlapping.
+func _place_cluster(area: Rect2, c: Vector2, kinds: Array, size: Vector2, radius: float) -> void:
+	var n := _rng.randi_range(int(size.x), int(maxf(size.y, size.x)))
+	var placed := 0
+	for j in n * 4:                                      # a few tries per node
+		if placed >= n:
+			break
+		var kind: Array = _pick_kind(kinds)
+		var q := c
+		if placed > 0:
+			var d := _rng.randf_range(0.35, 1.0) * radius
+			q = c + Vector2.from_angle(_rng.randf() * TAU) * Vector2(d, d * 0.6)
+		if area.has_point(q) and _put(kind[0], q, kind[2]):
+			placed += 1
+
+
+func _pick_kind(kinds: Array) -> Array:
+	var total := 0.0
+	for k in kinds:
+		total += k[1]
+	var roll := _rng.randf() * total
+	for k in kinds:
+		roll -= k[1]
+		if roll <= 0.0:
+			return k
+	return kinds[0]
+
+
+## count single nodes of the weighted kinds anywhere in the forest.
+func _place_singles(area: Rect2, count: int, kinds: Array, min_r: float) -> void:
+	for i in count:
+		for attempt in 10:
+			var p := _random_point(area)
+			if p.length() < min_r or _rng.randf() > _forest(p) + 0.2:
+				continue
+			var kind: Array = _pick_kind(kinds)
+			if _put(kind[0], p, kind[2]):
+				break
 
 
 ## A spot near a random tree: beside or in front of it (south side, where the

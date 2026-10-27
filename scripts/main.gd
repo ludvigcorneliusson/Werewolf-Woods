@@ -813,6 +813,8 @@ func _ready() -> void:
 	if player.has_signal("mine_hit"):
 		player.connect("mine_hit", _mining.on_mine_hit)
 	_mining.node_broken.connect(_on_node_broken)
+	if player.has_signal("dig_hit"):
+		player.connect("dig_hit", _on_dig_hit)
 	_apply_mining()
 	_setup_survival()
 	_footprints = Footprints.new()
@@ -1171,6 +1173,31 @@ func _on_node_broken(node: Node2D, image: String) -> void:
 	_on_tree_felled(node)
 
 
+## The spade digs in: a puff of soil (digging does nothing else yet).
+func _on_dig_hit(point: Vector2, side: int) -> void:
+	var p := CPUParticles2D.new()
+	p.one_shot = true
+	p.emitting = false
+	p.amount = 10
+	p.lifetime = 0.5
+	p.explosiveness = 1.0
+	p.direction = Vector2(side, -1.6).normalized()
+	p.spread = 35.0
+	p.initial_velocity_min = 40.0
+	p.initial_velocity_max = 85.0
+	p.gravity = Vector2(0, 360)
+	p.scale_amount_min = 1.0
+	p.scale_amount_max = 2.0
+	p.color = Color(0.36, 0.26, 0.17)
+	p.hue_variation_min = -0.02
+	p.hue_variation_max = 0.02
+	p.z_index = 1
+	world.add_child(p)
+	p.global_position = point
+	p.emitting = true
+	get_tree().create_timer(0.9, false).timeout.connect(p.queue_free)
+
+
 func _apply_night_eyes() -> void:
 	if _night_eyes == null:
 		return
@@ -1454,12 +1481,16 @@ func _toggle_escape_menu() -> void:
 		add_child(_escape_menu)
 		_escape_menu.closed.connect(func():
 			if is_instance_valid(player):
-				player.input_enabled = true)
+				player.input_enabled = true
+			if _game_hud:
+				_game_hud.blocked = false)
 	if _escape_menu.is_open():
 		_escape_menu.close()
 	else:
 		_escape_menu.open()
 		player.input_enabled = false
+		if _game_hud:
+			_game_hud.blocked = true
 
 
 func _on_role_chosen(role: String) -> void:

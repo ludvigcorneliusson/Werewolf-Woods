@@ -62,10 +62,9 @@ signal chop_hit(point: Vector2, side: int)
 signal mine_hit(point: Vector2, side: int)
 
 ## Pickaxe swing (left click with the pickaxe), from ClipProj_H3_00021 via
-## tools/chop_from_video.py (side mine_right): rest, raise overhead (held),
-## strike down to the right (impact), hold, back up. Same keys as CHOP. Only
-## "right" exists for now: facing left plays it mirrored. Add a "left" entry
-## with its own strip and that one is used instead. (With MINE empty the
+## tools/chop_from_video.py (sides mine_right / mine_left, ClipProj_H3_00021 /
+## 00023): rest, raise overhead (held), strike down (impact), hold, back up.
+## Same keys as CHOP. Without a "left" entry the right strip is mirrored. (With MINE empty the
 ## pickaxe falls back to MINE_PLACEHOLDER: the standing sprite leans and swings.)
 const MINE := {
 	# Filmed at 24 fps, distinct frames only; the raised pick and the strike are held.
@@ -73,11 +72,29 @@ const MINE := {
 		"size": Vector2i(51, 52), "offset": Vector2(-23, -49), "fps": 30.0, "impact": 8,
 		"durations": {0: 0.5, 1: 2.0, 2: 2.0, 3: 2.0, 4: 4.0, 5: 3.0, 6: 2.0, 7: 1.5, 8: 6.0,
 			9: 3.0, 10: 2.0, 11: 2.0}},
+	# ClipProj_H3_00023 (facing left), same timing: wind-up held at the top, strike held.
+	"left": {"tex": preload("res://assets/characters/settler_mine_left.png"), "frames": 14,
+		"size": Vector2i(53, 51), "offset": Vector2(-33, -48), "fps": 30.0, "impact": 9,
+		"durations": {0: 0.5, 1: 2.0, 2: 2.0, 3: 2.0, 4: 2.0, 5: 4.0, 6: 3.0, 7: 2.0, 8: 1.5,
+			9: 6.0, 10: 3.0, 11: 2.0, 12: 2.0, 13: 2.0}},
 }
+## Spade dig (left click with the spade), from ClipProj_H3_00025 via
+## tools/chop_from_video.py (side dig_right): push the blade in, lever (the
+## dig), lift the dirt, back to rest. Same keys as CHOP; facing left plays the
+## right strip mirrored until a "left" entry is added.
+const DIG := {
+	"right": {"tex": preload("res://assets/characters/settler_dig_right.png"), "frames": 18,
+		"size": Vector2i(41, 48), "offset": Vector2(-15, -45), "fps": 30.0, "impact": 9,
+		"durations": {0: 0.5, 1: 2.0, 2: 2.0, 3: 2.5, 4: 2.0, 5: 2.0, 6: 2.0, 7: 2.0, 8: 2.0,
+			9: 4.0, 10: 2.0, 11: 2.0, 12: 2.0, 13: 3.0, 14: 2.0, 15: 2.0, 16: 2.0, 17: 2.0}},
+}
+## The spade digs (at the dig frame): point = where the blade goes in.
+signal dig_hit(point: Vector2, side: int)
+
 ## Placeholder swing timing (seconds) and lean (radians, around the feet).
 const MINE_PLACEHOLDER := {"windup": 0.3, "strike": 0.07, "recover": 0.28, "back": 0.16, "forward": 0.12}
 ## Tools that swing on left click.
-const SWING_TOOLS := ["axe", "pickaxe"]
+const SWING_TOOLS := ["axe", "pickaxe", "spade"]
 
 const STEP_SOUND := "res://assets/sounds/footsteps/grass_step.wav"   # default footstep
 const DEFAULT_STEPS := [0.0, 0.5]
@@ -133,7 +150,7 @@ var _speed := 0.0
 var chop_speed := 1.0
 var chopping := false
 ## Tool in hand (the tools bar in hud.gd sets it). Left click swings the axe
-## (chop) or the pickaxe (mine); other tools don't swing yet.
+## (chop), the pickaxe (mine) or the spade (dig).
 var held_tool := "axe"
 ## Pickaxe swing speed (1 = as built).
 var mine_speed := 1.0
@@ -260,6 +277,14 @@ func _start_chop() -> void:
 	chopping = true
 	_moving = false
 	_swing_tool = held_tool
+	if held_tool == "spade":
+		var own_left := _side < 0 and DIG.has("left")
+		sprite.play("dig_left" if own_left else "dig_right")
+		sprite.flip_h = _side < 0 and not own_left
+		sprite.speed_scale = mine_speed
+		sprite.frame = 0
+		_apply_flip_offset()
+		return
 	if held_tool == "pickaxe":
 		if MINE.is_empty():
 			_start_mine_placeholder()
@@ -297,6 +322,8 @@ func _emit_hit() -> void:
 	var point := global_position + Vector2(CHOP_REACH.x * _side, CHOP_REACH.y)
 	if _swing_tool == "pickaxe":
 		mine_hit.emit(point, _side)
+	elif _swing_tool == "spade":
+		dig_hit.emit(global_position + Vector2(13.0 * _side, 1.0), _side)
 	else:
 		chop_hit.emit(point, _side)
 
@@ -312,15 +339,15 @@ func _on_frame_changed() -> void:
 	if not chopping:
 		return
 	var anim := String(sprite.animation)
-	for prefix in ["chop_", "mine_"]:
+	for prefix in ["chop_", "mine_", "dig_"]:
 		if anim.begins_with(prefix):
-			var table: Dictionary = CHOP if prefix == "chop_" else MINE
+			var table: Dictionary = {"chop_": CHOP, "mine_": MINE, "dig_": DIG}[prefix]
 			if sprite.frame == table[anim.trim_prefix(prefix)].impact:
 				_emit_hit()
 
 
 func _on_animation_finished() -> void:
-	if sprite.animation.begins_with("chop_") or sprite.animation.begins_with("mine_"):
+	if sprite.animation.begins_with("chop_") or sprite.animation.begins_with("mine_") or sprite.animation.begins_with("dig_"):
 		_end_swing()
 
 
@@ -482,6 +509,8 @@ func _build_frames() -> SpriteFrames:
 		swings.append(["chop_" + side, CHOP[side]])
 	for side: String in MINE:
 		swings.append(["mine_" + side, MINE[side]])
+	for side: String in DIG:
+		swings.append(["dig_" + side, DIG[side]])
 	for sw in swings:
 		var c: Dictionary = sw[1]
 		var anim: String = sw[0]

@@ -119,6 +119,43 @@ def shrink(a, longest, unit=1.0):
     return out
 
 
+def outline_shrink(a, f, cover=0.25):
+    """Shrink for thin pixel art (the twig): a pixel is solid if at least `cover`
+    of its block is (so thin branches stay connected), filled with the most
+    common NON-outline colour of the block, then a fresh 1 px dark outline is
+    drawn around the whole silhouette. Keeps a thin branch readable at small
+    sizes where the plain mode shrink breaks it into dots."""
+    from scipy import ndimage
+    h, w = a.shape[:2]
+    ow, oh = round(w * f), round(h * f)
+    op = a[..., 3] > 0
+    cols = a[..., :3].astype(int)
+    lum = cols[..., 0] * 0.3 + cols[..., 1] * 0.59 + cols[..., 2] * 0.11
+    dark = op & (lum < 60)
+    outline = Counter(map(tuple, cols[dark])).most_common(1)[0][0]
+    out = np.zeros((oh, ow, 4), np.uint8)
+    solid = np.zeros((oh, ow), bool)
+    for y in range(oh):
+        y0, y1 = int(y / f), max(int((y + 1) / f), int(y / f) + 1)
+        for x in range(ow):
+            x0, x1 = int(x / f), max(int((x + 1) / f), int(x / f) + 1)
+            bo = op[y0:y1, x0:x1]
+            if bo.mean() < cover:
+                continue
+            inner = cols[y0:y1, x0:x1][bo & ~dark[y0:y1, x0:x1]]
+            if len(inner) == 0:
+                inner = cols[y0:y1, x0:x1][bo]
+            out[y, x, :3] = Counter(map(tuple, inner)).most_common(1)[0][0]
+            out[y, x, 3] = 255
+            solid[y, x] = True
+    big = np.pad(out, ((1, 1), (1, 1), (0, 0)))
+    s2 = np.pad(solid, 1)
+    ring = ndimage.binary_dilation(s2, structure=[[0, 1, 0], [1, 1, 1], [0, 1, 0]]) & ~s2
+    big[ring, :3] = outline
+    big[ring, 3] = 255
+    return big
+
+
 for name, (src, cell, half, rot, longest) in ICONS.items():
     a = native(f'{P}/tools/art/{src}', cell)
     if half:
@@ -128,7 +165,10 @@ for name, (src, cell, half, rot, longest) in ICONS.items():
     unit = 1.0
     if rot is not None:
         a, unit = rotsprite(a, rot)
-    icon = shrink(a, longest, unit if rot is not None else 1.0)
+    if name == 'twig':
+        icon = outline_shrink(a, 0.5)              # thin branch: see outline_shrink
+    else:
+        icon = shrink(a, longest, unit if rot is not None else 1.0)
     Image.fromarray(icon, 'RGBA').save(f'{P}/assets/ui/{name}.png')
     print(name, 'native', a.shape[1::-1] if rot is None else '', '-> icon', icon.shape[1], 'x', icon.shape[0])
 
@@ -144,7 +184,7 @@ for name, (src, cell) in PROP_ART.items():
 #   assets/props/log_drop.png = dropped logs (40 px)
 # (the old images are kept as tools/art/old_stick.png / old_log.png)
 twig = np.asarray(Image.open(f'{P}/tools/art/native_twig.png').convert('RGBA'))
-Image.fromarray(shrink(twig, 28), 'RGBA').save(f'{P}/assets/props/stick.png')
+Image.fromarray(outline_shrink(twig, 0.34, 0.2), 'RGBA').save(f'{P}/assets/props/stick.png')
 log = np.asarray(Image.open(f'{P}/tools/art/native_log.png').convert('RGBA'))
 Image.fromarray(log, 'RGBA').save(f'{P}/assets/props/log.png')
 # Dropped logs: the 40 px icon art at 1:1 (own file name, so nothing mistakes a

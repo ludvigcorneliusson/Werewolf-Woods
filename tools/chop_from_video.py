@@ -2,7 +2,9 @@
 
 Used for assets/characters/settler_chop_right.png (ClipProj_H3_00013),
 settler_chop_left.png (ClipProj_H3_00005) and the pickaxe swing
-settler_mine_right.png (ClipProj_H3_00021, side "mine_right").
+settler_mine_right.png (ClipProj_H3_00021, side "mine_right") and
+settler_mine_left.png (ClipProj_H3_00023, side "mine_left"), and the spade dig
+settler_dig_right.png (ClipProj_H3_00025, side "dig_right").
 Usage, from any folder:
   1. Extract every frame of the video into <work>/frames:
        ffmpeg -i chop.mp4 <work>/frames/f_%03d.png
@@ -44,6 +46,15 @@ VIDEOS = {
     # Used for both sides for now (the left side is this strip mirrored).
     'mine_right': {'frames': [1, 7, 8, 10, 12, 19, 20, 22, 23, 33, 35, 37], 'impact': 23,
                    'out': 'settler_mine_right.png'},
+    # ClipProj_H3_00023 (pickaxe, facing left): rest, raise overhead (held 12-18),
+    # strike down to the left (impact = video frame 23), hold, back up.
+    'mine_left': {'frames': [1, 4, 6, 8, 10, 12, 14, 19, 21, 23, 33, 35, 37, 38], 'impact': 23,
+                  'out': 'settler_mine_left.png'},
+    # ClipProj_H3_00025 (spade, facing right): push the blade into the ground,
+    # lever (the dig = video frame 19), lift the dirt, back to rest. Also used
+    # mirrored for facing left.
+    'dig_right': {'frames': [1, 3, 4, 6, 10, 12, 15, 16, 18, 19, 21, 23, 25, 27, 31, 33, 35, 37],
+                  'impact': 19, 'out': 'settler_dig_right.png'},
 }
 FRAMES = VIDEOS[SIDE]['frames']
 REF = VIDEOS[SIDE].get('ref', FRAMES[0])
