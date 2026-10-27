@@ -216,7 +216,7 @@ func _options(items: Array, selected: String) -> OptionButton:
 
 
 ## Look of the settings controls, matching the menu buttons.
-func _theme() -> Theme:
+static func _theme() -> Theme:
 	var t := Theme.new()
 	t.default_font_size = 20
 	for type in ["Button", "OptionButton", "CheckBox"]:

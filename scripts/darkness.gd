@@ -130,13 +130,18 @@ func _ready() -> void:
 	_param("static_light", ImageTexture.create_from_image(blank))
 
 
-## Which cells hold a tree trunk (from World/Props), then the campfires' light.
-func build(props: Node, area: Rect2) -> void:
+## Which cells hold a tree trunk (from the prop layers: World/Props and your
+## painted World/Placed), then the campfires' light.
+func build(layers: Array, area: Rect2) -> void:
 	_origin = area.position
 	_grid = Vector2i((area.size / cell).ceil())
 	_absorb = PackedFloat32Array()
 	_absorb.resize(_grid.x * _grid.y)
-	for prop in props.get_children():
+	var all_props := []
+	for layer in layers:
+		if is_instance_valid(layer):
+			all_props.append_array(layer.get_children())
+	for prop in all_props:
 		var sprite := prop.get_node_or_null("Sprite") as Sprite2D
 		if sprite == null or sprite.texture == null:
 			continue

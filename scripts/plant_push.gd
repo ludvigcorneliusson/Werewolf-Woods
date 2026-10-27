@@ -9,6 +9,7 @@ const CELL := 64.0
 
 var player: CharacterBody2D
 var props: Node              # World/Props TileMapLayer (plants are its children)
+var placed: Node             # World/Placed: your painted props (optional)
 var walk_speed := 120.0
 
 var push_strength := 0.45    # max lean in radians at full bend, walking speed
@@ -24,7 +25,7 @@ var _indexed_count := -1
 func _physics_process(delta: float) -> void:
 	if player == null or props == null:
 		return
-	if props.get_child_count() != _indexed_count:
+	if _child_count() != _indexed_count:
 		_index()
 
 	var feet := player.global_position
@@ -70,10 +71,17 @@ func _physics_process(delta: float) -> void:
 			sprite.skew = st[0]       # positive = top leans right (origin = foot)
 
 
+func _child_count() -> int:
+	return props.get_child_count() + (placed.get_child_count() if is_instance_valid(placed) else 0)
+
+
 func _index() -> void:
 	_grid.clear()
-	_indexed_count = props.get_child_count()
-	for prop in props.get_children():
+	_indexed_count = _child_count()
+	var all_props := props.get_children()
+	if is_instance_valid(placed):
+		all_props.append_array(placed.get_children())
+	for prop in all_props:
 		var b = prop.get("bend")
 		if b == null or float(b) <= 0.0:
 			continue

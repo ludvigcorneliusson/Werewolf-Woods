@@ -90,6 +90,7 @@ var _offsets := {}
 
 func _ready() -> void:
 	motion_mode = CharacterBody2D.MOTION_MODE_FLOATING
+	add_to_group("scares_rabbits")       # wildlife flees from every character (scripts/rabbit.gd)
 
 	var shape := CircleShape2D.new()
 	shape.radius = body_radius
@@ -173,8 +174,8 @@ func _setup_footsteps() -> void:
 	# Your own steps: plain (not positional), so they always sound the same.
 	# Other characters: positional, so you hear where they are and how far.
 	_step_player = AudioStreamPlayer.new() if is_local else AudioStreamPlayer2D.new()
-	if step_sound == null:
-		step_sound = load(STEP_SOUND)
+	if step_sound == null and ResourceLoader.exists(STEP_SOUND):
+		step_sound = load(STEP_SOUND)            # no file = no footstep sound
 	_step_player.stream = step_sound
 	_step_player.max_polyphony = 2          # let the tail of one step finish under the next
 	add_child(_step_player)
@@ -185,7 +186,7 @@ func _setup_footsteps() -> void:
 ## per ground type). null = back to the default STEP_SOUND. Takes effect from
 ## the next step; a step that is already playing finishes first.
 func set_step_sound(stream: AudioStream) -> void:
-	if stream == null:
+	if stream == null and ResourceLoader.exists(STEP_SOUND):
 		stream = load(STEP_SOUND)
 	if stream == step_sound:
 		return
@@ -240,6 +241,8 @@ func _play_step() -> void:
 	if _step_cooldown > 0.0:                    # guards against key-tapping spam
 		return
 	_step_cooldown = 0.09
+	if step_sound == null:
+		return                                  # no footstep sound set
 	if _step_player.stream != step_sound:
 		_step_player.stream = step_sound
 	_step_player.play()

@@ -13,6 +13,9 @@ const PlantPush := preload("res://scripts/plant_push.gd")
 const DayNight := preload("res://scripts/day_night.gd")
 const GameSettings := preload("res://scripts/game_settings.gd")
 const EscapeMenu := preload("res://scripts/escape_menu.gd")
+const Weather := preload("res://scripts/weather.gd")
+const Rain := preload("res://scripts/rain.gd")
+const AdvancedSettings := preload("res://scripts/advanced_settings.gd")
 ## Shared by every prop scene; we feed it the player position so trees fade
 ## when the player walks behind them.
 const PROP_MATERIAL := preload("res://assets/props/prop_material.tres")
@@ -117,12 +120,24 @@ var _footprints: Node2D
 ## It spawns at least this far from you.
 @export_range(200.0, 5000.0, 10.0, "suffix:px") var werewolf_spawn_distance := 1400.0
 ## Distance at which it notices you and starts chasing.
-@export_range(50.0, 1500.0, 5.0, "suffix:px") var werewolf_sense := 320.0
+@export_range(50.0, 1500.0, 5.0, "suffix:px") var werewolf_sense := 320.0:
+	set(v):
+		werewolf_sense = v
+		_apply_werewolf()
 ## Distance at which it loses you.
-@export_range(100.0, 3000.0, 10.0, "suffix:px") var werewolf_lose := 560.0
+@export_range(100.0, 3000.0, 10.0, "suffix:px") var werewolf_lose := 560.0:
+	set(v):
+		werewolf_lose = v
+		_apply_werewolf()
 ## Werewolf speeds on Normal (the human walks 120, sprints 200). The menu Difficulty scales the AI werewolf.
-@export_range(20.0, 600.0, 5.0) var werewolf_walk_speed := 140.0
-@export_range(20.0, 800.0, 5.0) var werewolf_sprint_speed := 215.0
+@export_range(20.0, 600.0, 5.0) var werewolf_walk_speed := 140.0:
+	set(v):
+		werewolf_walk_speed = v
+		_apply_werewolf()
+@export_range(20.0, 800.0, 5.0) var werewolf_sprint_speed := 215.0:
+	set(v):
+		werewolf_sprint_speed = v
+		_apply_werewolf()
 @export_group("")
 
 var werewolf: CharacterBody2D
@@ -154,7 +169,85 @@ var werewolf: CharacterBody2D
 @export_group("")
 
 var _day_night: Node
+
+# --- Weather ------------------------------------------------------------------
+# Clear and rainy spells for each round, picked from the map seed (the same for
+# every player). T toggles rain (debug).
+@export_group("Weather")
+## Weather changes during the round. Off = always clear.
+@export var weather_enabled := true:
+	set(v):
+		weather_enabled = v
+		_apply_weather()
+## Chance that each weather spell is rain (0 = never rains, 1 = always).
+@export_range(0.0, 1.0, 0.01) var rain_chance := 0.5:
+	set(v):
+		rain_chance = v
+		_apply_weather(true)
+## Length of a clear spell, random between min (x) and max (y) seconds.
+@export var clear_spell := Vector2(60.0, 180.0):
+	set(v):
+		clear_spell = v
+		_apply_weather(true)
+## Length of a rain spell, random between min (x) and max (y) seconds.
+@export var rain_spell := Vector2(45.0, 120.0):
+	set(v):
+		rain_spell = v
+		_apply_weather(true)
+## Seconds for rain to fade in or out.
+@export_range(0.5, 60.0, 0.5, "suffix:s") var rain_fade := 10.0:
+	set(v):
+		rain_fade = v
+		_apply_weather()
+## Rain streaks on screen at full rain.
+@export_range(50, 4000, 10) var rain_drops := 900:
+	set(v):
+		rain_drops = v
+		_apply_weather()
+## Splashes on the ground at full rain.
+@export_range(0, 1000, 5) var rain_splashes := 140:
+	set(v):
+		rain_splashes = v
+		_apply_weather()
+## Colour and transparency of the rain streaks and splashes.
+@export var rain_color := Color(0.8, 0.87, 1.0, 0.7):
+	set(v):
+		rain_color = v
+		_apply_weather()
+## How fast drops fall (world px per second).
+@export_range(100.0, 2000.0, 10.0) var rain_speed := 650.0:
+	set(v):
+		rain_speed = v
+		_apply_weather()
+## Sideways drift of the drops (+ = to the right).
+@export_range(-1.0, 1.0, 0.01) var rain_slant := 0.18:
+	set(v):
+		rain_slant = v
+		_apply_weather()
+## Rain sound (loops). Any .wav/.ogg/.mp3; the default is a generated placeholder.
+@export var rain_sound: AudioStream = preload("res://assets/sounds/weather/rain_loop.wav"):
+	set(v):
+		rain_sound = v
+		_apply_weather()
+## Rain sound volume at full rain.
+@export_range(-40.0, 12.0, 0.5, "suffix:dB") var rain_volume := -8.0:
+	set(v):
+		rain_volume = v
+		_apply_weather()
+## Colour the world takes on in full rain (multiplies the day/night tint).
+@export var rain_tint := Color(0.66, 0.7, 0.78)
+## Extra wind in the trees during rain (1 = double the wind strength).
+@export_range(0.0, 5.0, 0.05) var rain_wind_boost := 1.2
+## Footprints last this fraction of their normal time in full rain.
+@export_range(0.05, 1.0, 0.01) var rain_footprint_life := 0.3
+## The AI werewolf's steps carry this fraction of their normal distance in full rain.
+@export_range(0.1, 1.0, 0.01) var rain_hearing := 0.6
+@export_group("")
+
+var _weather: Node
+var _rain: Node2D
 var _escape_menu: CanvasLayer
+var _advanced_defaults := {}          # "main.prop"/"builder.prop" -> value from main.tscn (for Reset)
 var _round_started := false
 var _round_label: Label
 
@@ -327,14 +420,14 @@ var _round_label: Label
 		footsteps_enabled = v
 		_apply_footsteps()
 ## The settler's footstep sound (drag any .wav/.ogg/.mp3 here). Empty = default grass step.
-@export var settler_step_sound: AudioStream = preload("res://assets/sounds/footsteps/grass_step.wav"):
-	set(v):
-		settler_step_sound = v
+##@export var settler_step_sound: AudioStream = preload("res://assets/sounds/footsteps/grass_step.wav"):
+##	set(v):
+##		settler_step_sound = v
 		_apply_footsteps()
 ## The werewolf's footstep sound. Empty = default grass step.
-@export var werewolf_step_sound: AudioStream = preload("res://assets/sounds/footsteps/grass_step.wav"):
-	set(v):
-		werewolf_step_sound = v
+##@export var werewolf_step_sound: AudioStream = preload("res://assets/sounds/footsteps/grass_step.wav"):
+##	set(v):
+##		werewolf_step_sound = v
 		_apply_footsteps()
 ## Settler step volume.
 @export_range(-40.0, 12.0, 0.5, "suffix:dB") var settler_step_volume := -6.0:
@@ -404,6 +497,7 @@ func _ready() -> void:
 	GameSettings.load_settings()
 	GameSettings.apply_display(get_window())
 	GameSettings.apply_volume()
+	_apply_advanced_overrides()
 
 	# Night: an organic darkness overlay with holes around the player and fires.
 	darkness = CanvasModulate.new()
@@ -418,6 +512,8 @@ func _ready() -> void:
 	_day_night.dusk_started.connect(_on_dusk)
 	_day_night.night_fell.connect(_on_night)
 	add_child(_day_night)
+	_weather = Weather.new()
+	add_child(_weather)
 
 	player = Player.new()
 	add_child(player)
@@ -427,6 +523,9 @@ func _ready() -> void:
 
 	_build_hud()
 	_generate_world()
+	_rain = Rain.new()
+	add_child(_rain)
+	_apply_weather(true)
 	world = get_node_or_null("World")
 	if use_generated_map or world == null:
 		if world:
@@ -442,7 +541,12 @@ func _ready() -> void:
 	_footprints.walker = player
 	_apply_footprints()
 	_rebuild_darkness.call_deferred()
-	if show_start_menu:
+	if GameSettings.restart_role != "":
+		# Restarted from "Regenerate map": straight back into the round.
+		var role := GameSettings.restart_role
+		GameSettings.restart_role = ""
+		_on_role_chosen.call_deferred(role)
+	elif show_start_menu:
 		var menu := StartMenu.new()
 		add_child(menu)
 		menu.chosen.connect(_on_role_chosen)
@@ -450,10 +554,12 @@ func _ready() -> void:
 		get_tree().paused = true                # the forest shows behind the menu, frozen
 	else:
 		_day_night.start()
+		_weather.start()
 		_round_started = true
 	_plant_push = PlantPush.new()
 	_plant_push.player = player
 	_plant_push.props = world.get_node_or_null("Props") if is_instance_valid(world) else null
+	_plant_push.placed = world.get_node_or_null("Placed") if is_instance_valid(world) else null
 	_plant_push.walk_speed = Player.WALK_SPEED
 	add_child(_plant_push)
 	_apply_plants()
@@ -461,6 +567,7 @@ func _ready() -> void:
 
 func _process(_delta: float) -> void:
 	_apply_sky()
+	_apply_rain_effects()
 	if map:
 		map.set_player_position(player.global_position)
 	else:
@@ -515,7 +622,7 @@ func _apply_footsteps() -> void:
 		var wolf: bool = c.get_script() == Werewolf
 		c.footsteps_enabled = footsteps_enabled
 		c.step_volume_db = werewolf_step_volume if wolf else settler_step_volume
-		c.set_step_sound(werewolf_step_sound if wolf else settler_step_sound)
+##		c.set_step_sound(werewolf_step_sound if wolf else settler_step_sound)
 		if wolf:
 			c.step_hear_distance = werewolf_hear_distance
 		c.apply_footsteps()
@@ -565,12 +672,53 @@ func _apply_sky() -> void:
 	var n: float = _day_night.night
 	var night_tint := vision_tint * vision_brightness
 	var tint := day_tint.lerp(dusk_tint, n * 2.0) if n < 0.5 else dusk_tint.lerp(night_tint, (n - 0.5) * 2.0)
+	if _weather:
+		tint = tint.lerp(tint * rain_tint, _weather.rain)            # greyer, darker in rain
 	darkness.color = tint if fog_enabled else Color.WHITE
 	# Darkness creeps in after the sunset has started; full at nightfall.
 	_dark.set_night(smoothstep(0.15, 1.0, n))
 	for f in get_tree().get_nodes_in_group("light_sources"):
 		if f.get("glow_scale") != null:
 			f.glow_scale = lerpf(campfire_day_glow, 1.0, smoothstep(0.0, 0.7, n))
+
+
+## Pushes the Weather settings to the weather clock and the rain effect
+## (reschedule = the spell settings changed, so rebuild this round's schedule).
+func _apply_weather(reschedule := false) -> void:
+	if _weather == null:
+		return
+	_weather.enabled = weather_enabled
+	_weather.fade_time = rain_fade
+	_weather.rain_chance = rain_chance
+	_weather.clear_spell = clear_spell
+	_weather.rain_spell = rain_spell
+	if reschedule:
+		_weather.setup(GameSettings.map_seed)
+	if _rain:
+		_rain.drops = rain_drops
+		_rain.splashes = rain_splashes
+		_rain.color = rain_color
+		_rain.fall_speed = rain_speed
+		_rain.slant = rain_slant
+		_rain.sound = rain_sound
+		_rain.volume_db = rain_volume
+		_rain.apply()
+
+
+## Every frame: rain strength -> rain effect, wind, footprints, hearing.
+func _apply_rain_effects() -> void:
+	if _weather == null or _rain == null:
+		return
+	var r: float = _weather.rain
+	_rain.camera = player.camera if is_instance_valid(player) else null
+	_rain.intensity = r
+	var w := (wind_strength if wind_enabled else 0.0) * (1.0 + rain_wind_boost * r)
+	VARIED_MATERIAL.set_shader_parameter("wind_strength", w)
+	if _footprints:
+		_footprints.lifetime = footprint_lifetime * lerpf(1.0, rain_footprint_life, r)
+	if is_instance_valid(werewolf) and werewolf != player:
+		werewolf.step_hear_distance = werewolf_hear_distance * lerpf(1.0, rain_hearing, r)
+		werewolf.apply_footsteps()
 
 
 func _on_dusk() -> void:
@@ -594,7 +742,8 @@ func _rebuild_darkness() -> void:
 	_apply_fog()
 	var props := world.get_node_or_null("Props")
 	if props:
-		_dark.build(props, _map_rect())
+		# Generated props, painted props and scenes dragged straight into World.
+		_dark.build([props, world.get_node_or_null("Placed"), world], _map_rect())
 
 
 ## Map area = the painted ground.
@@ -617,6 +766,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		_new_map(randi())
 	elif event.is_action_pressed("skip_time"):
 		_day_night.skip()
+	elif event.is_action_pressed("toggle_rain"):
+		_weather.toggle()
 	elif event.is_action_pressed("god_mode"):
 		_set_god_mode(not god_mode)
 	elif event.is_action_pressed("toggle_fullscreen"):
@@ -634,10 +785,71 @@ func _unhandled_input(event: InputEvent) -> void:
 
 ## God mode: no fog, mouse-wheel zoom, no collisions, fast movement, free camera.
 ## Turning it off restores fog, camera zoom and limits.
+# --- Advanced settings (Esc menu) ----------------------------------------------
+
+## Remembers the main.tscn values of every Advanced setting (for Reset), then
+## applies the saved changes on top. Runs first in _ready, so everything built
+## afterwards uses them.
+func _apply_advanced_overrides() -> void:
+	var builder := get_node_or_null("WorldBuilder")
+	for sec in AdvancedSettings.SECTIONS:
+		var target: Object = self if sec[1] == "main" else builder
+		if target == null:
+			continue
+		for prop: String in sec[2]:
+			var key: String = sec[1] + "." + prop
+			_advanced_defaults[key] = target.get(prop)
+			if GameSettings.advanced.has(key):
+				target.set(prop, GameSettings.advanced[key])
+
+
+## Advanced settings > Reset to defaults.
+func reset_advanced_settings() -> void:
+	var builder := get_node_or_null("WorldBuilder")
+	for key: String in _advanced_defaults:
+		var parts := key.split(".")
+		var target: Object = self if parts[0] == "main" else builder
+		if target:
+			target.set(parts[1], _advanced_defaults[key])
+	GameSettings.advanced.clear()
+	GameSettings.save_settings()
+
+
+## Advanced settings > Regenerate map: new forest, same side, round restarts.
+func regenerate_map() -> void:
+	GameSettings.save_settings()
+	GameSettings.keep_seed_for_next_round()
+	GameSettings.restart_role = player_role
+	get_tree().reload_current_scene()
+
+
+## Advanced settings > Rain now / Clear now.
+func force_rain(on: bool) -> void:
+	if _weather:
+		_weather.force(on)
+
+
+## Advanced settings > Jump to day / dusk / night.
+func jump_time(which: String) -> void:
+	if _day_night:
+		_day_night.jump_to(which)
+
+
+## Werewolf settings changed: update the AI werewolf that is already out.
+func _apply_werewolf() -> void:
+	if not is_instance_valid(werewolf) or werewolf == player:
+		return
+	werewolf.walk_speed = werewolf_walk_speed * GameSettings.werewolf_speed_scale()
+	werewolf.sprint_speed = werewolf_sprint_speed * GameSettings.werewolf_speed_scale()
+	werewolf.sense_radius = werewolf_sense
+	werewolf.lose_radius = werewolf_lose
+
+
 ## Esc menu: the game keeps running (no pause); your character stands still.
 func _toggle_escape_menu() -> void:
 	if _escape_menu == null:
 		_escape_menu = EscapeMenu.new()
+		_escape_menu.main = self
 		add_child(_escape_menu)
 		_escape_menu.closed.connect(func():
 			if is_instance_valid(player):
@@ -656,6 +868,7 @@ func _on_role_chosen(role: String) -> void:
 		_become_werewolf()
 	get_tree().paused = false
 	_day_night.start()                  # werewolf spawns from _on_dusk / _on_night
+	_weather.start()
 
 
 ## Play as the werewolf: swap the settler for a werewolf you control.
@@ -792,7 +1005,7 @@ func _new_map(new_seed: int) -> void:
 	cam.limit_bottom = int(map.map_size.y)
 	cam.reset_smoothing()
 
-	_hud_label.text = "Seed %d   |   WASD move · Shift sprint · R new map · F god mode · N skip time · Mouse wheel zoom" % seed_value
+	_hud_label.text = "Seed %d   |   WASD move · Shift sprint · R new map · F god mode · N skip time · T rain · Mouse wheel zoom" % seed_value
 
 
 ## A fresh forest every round from the menu settings (map size + seed), built by
@@ -823,7 +1036,7 @@ func _setup_painted_world() -> void:
 	player.camera.zoom = Vector2(camera_zoom, camera_zoom)   # Camera settings on Main
 	_add_world_borders()
 	player.camera.reset_smoothing()
-	_hud_label.text = "Seed %d (%s)   |   WASD move · Shift sprint · F god mode · N skip time · F11 fullscreen" % [GameSettings.map_seed, GameSettings.map_size] + (" · Mouse wheel zoom" if scroll_zoom else "")
+	_hud_label.text = "Seed %d (%s)   |   WASD move · Shift sprint · F god mode · N skip time · T rain · F11 fullscreen" % [GameSettings.map_seed, GameSettings.map_size] + (" · Mouse wheel zoom" if scroll_zoom else "")
 
 
 func _add_world_borders() -> void:
@@ -889,6 +1102,7 @@ func _setup_input() -> void:
 		"regenerate": [KEY_R],
 		"god_mode": [KEY_F],
 		"skip_time": [KEY_N],
+		"toggle_rain": [KEY_T],
 		"toggle_fullscreen": [KEY_F11],
 	}
 	for action in bindings:

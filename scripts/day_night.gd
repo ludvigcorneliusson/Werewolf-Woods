@@ -38,6 +38,19 @@ func skip() -> void:
 	_update()
 
 
+## Jump to the start of a phase ("day", "dusk" or "night"), also backwards.
+## Going forwards fires the usual signals (e.g. the werewolf spawns at dusk).
+func jump_to(which: String) -> void:
+	var t := {"day": 0.0, "dusk": day_length, "night": day_length + dusk_length}.get(which, time) as float
+	if t < time:
+		# Backwards: set the phase quietly (no signals).
+		time = t
+		phase = Phase.NIGHT if t >= day_length + dusk_length else (Phase.DUSK if t >= day_length else Phase.DAY)
+	else:
+		time = t
+	_update()
+
+
 func _process(delta: float) -> void:
 	if not running:
 		return

@@ -3,8 +3,14 @@ extends Node
 ## Editor helper: select the WorldBuilder node in main.tscn, change the settings
 ## below and click "Rebuild World". Then save the scene (Ctrl+S).
 ##
-## It replaces the World node (ground, pine forest, campfire, spawn) - anything
-## you painted by hand in World is lost. Not undoable with Ctrl+Z: if you don't
+## It replaces the generated parts of World (Ground and Props) and KEEPS
+## everything else - Campfire and Spawn where you moved them, plus everything you
+## added yourself:
+##   - props painted in the World/Placed layer (tents, extra rocks, ...)
+##   - scenes you dragged in as direct children of World (e.g. tent.tscn)
+## They are kept on every rebuild (editor button and every round in the game),
+## and the generator keeps its trees and props clear of them (see the Painted
+## Props settings). Only things painted in World/Props are lost. Not undoable with Ctrl+Z: if you don't
 ## like the result, just close main.tscn without saving.
 ## In the running game main.gd uses it to generate a fresh forest every round
 ## from the menu settings (map size + seed); the other settings here still apply.
@@ -75,6 +81,23 @@ extends Node
 ## Keep this much open ground around the campfire (px).
 @export_range(0.0, 400.0, 1.0, "suffix:px") var campfire_space := 60.0
 
+@export_group("Animals")
+## Rabbits per million square px (Medium map = about 110 million). They prefer
+## open ground. 0 = none. Tune their behaviour on assets/characters/rabbit.tscn.
+@export_range(0.0, 5.0, 0.01) var rabbits := 0.25
+
+@export_group("Painted Props")
+## Generated trees keep their trunks at least this far from props you painted in
+## World/Placed (on top of the painted prop's own size). Trees are big, so this
+## also keeps their canopies from covering what you painted.
+@export_range(0.0, 400.0, 1.0, "suffix:px") var painted_tree_clearance := 60.0
+## Other generated props (rocks, logs, bushes, ferns, grass, ...) keep at least
+## this far from painted props.
+@export_range(0.0, 200.0, 1.0, "suffix:px") var painted_clearance := 16.0
+## Also keep trees out of the spot right in front of (below) a painted prop,
+## where their tall canopy would hide it. Leaves a small sight-line gap.
+@export var keep_painted_visible := true
+
 @export_group("Spawn")
 ## Where the settler starts, relative to the campfire at the map centre.
 @export var spawn_offset := Vector2(0, 70)
@@ -109,9 +132,29 @@ func _on_rebuild_pressed() -> void:
 
 ## Replaces main's World node. Returns the number of props placed.
 ## Also used by tools/build_world.gd from the command line.
+const GENERATED := ["Ground", "Props", "Rabbits"]
+const RABBIT := "res://assets/characters/rabbit.tscn"
+
+
 func rebuild(main: Node) -> int:
 	var old := main.get_node_or_null("World")
 	var index := old.get_index() if old else 0
+	# Everything you added yourself survives the rebuild: take it out before the
+	# old World goes (remembering who owns what, so the editor still saves it).
+	var placed: TileMapLayer = null
+	var kept := []
+	var owners := {}
+	if old:
+		for child in old.get_children():
+			if String(child.name) in GENERATED:
+				continue
+			if child.name == "Placed" and child is TileMapLayer:
+				placed = child
+			else:
+				kept.append(child)
+			_remember_owners(child, owners)
+			old.remove_child(child)
+			child.owner = null              # re-set below, once it sits in the new World
 	if old:
 		main.remove_child(old)
 		old.free()
@@ -140,18 +183,36 @@ func rebuild(main: Node) -> int:
 	props.tile_set = pts
 	props.y_sort_enabled = true
 	_add(main, world, props)
-	var placed := _place_props(props, ground)
+	if placed == null:
+		placed = TileMapLayer.new()
+		placed.name = "Placed"
+		placed.tile_set = pts
+		placed.y_sort_enabled = true
+	placed.owner = null
+	_add(main, world, placed)
+	for n in kept:
+		world.add_child(n)
+	for n in owners:
+		if is_instance_valid(n) and n != placed:
+			n.owner = owners[n]
+	_keepouts = _painted_keepouts(placed)
+	_keepouts.append_array(_node_keepouts(kept))
+	var count := _place_props(props, ground)
+	_place_rabbits(world, ground)
 
-	# Campfire in the middle of the clearing (instanced, so tweaks in campfire.tscn stay).
-	var campfire: Node2D = (load(CAMPFIRE) as PackedScene).instantiate()
-	campfire.name = "Campfire"
-	_add(main, world, campfire)
-
-	var spawn := Marker2D.new()
-	spawn.name = "Spawn"
-	spawn.position = spawn_offset
-	_add(main, world, spawn)
-	return placed
+	# Campfire in the middle of the clearing (instanced, so tweaks in campfire.tscn
+	# stay) and the spawn point - only made if there isn't one yet, so if you
+	# move them in the editor they stay where you put them.
+	if world.get_node_or_null("Campfire") == null:
+		var campfire: Node2D = (load(CAMPFIRE) as PackedScene).instantiate()
+		campfire.name = "Campfire"
+		_add(main, world, campfire)
+	if world.get_node_or_null("Spawn") == null:
+		var spawn := Marker2D.new()
+		spawn.name = "Spawn"
+		spawn.position = spawn_offset
+		_add(main, world, spawn)
+	return count
 
 
 var _rng := RandomNumberGenerator.new()
@@ -164,6 +225,8 @@ var _solid := {}          # 64 px buckets -> [[pos, radius], ...] of trunks/rock
 var _counts := {}
 var _trees := {}          # 128 px column buckets -> [[pos, half_width, trunk_height], ...] in world px
 var _tree_scale := {}     # tree name -> largest scale it can get (from its scene)
+var _keepouts := []       # painted props: [position, radius] the generator stays clear of
+var _tree_size := {}      # tree name -> Vector2 sprite size at its largest scale (world px)
 
 
 func _place_props(props: TileMapLayer, ground: TileMapLayer) -> int:
@@ -193,6 +256,9 @@ func _place_props(props: TileMapLayer, ground: TileMapLayer) -> int:
 		if _ids.has(name):
 			var inst = coll.get_scene_tile_scene(_ids[name]).instantiate()
 			_tree_scale[name] = maxf(float(inst.get("max_scale")), float(inst.get("min_scale")))
+			var spr := inst.get_node_or_null("Sprite") as Sprite2D
+			if spr and spr.texture:
+				_tree_size[name] = spr.texture.get_size() * _tree_scale[name]
 			inst.free()
 
 	var rect := ground.get_used_rect()
@@ -293,6 +359,49 @@ func _place_props(props: TileMapLayer, ground: TileMapLayer) -> int:
 	return _taken.size()
 
 
+## Rabbits: scattered over the map, more on open ground, never inside a trunk,
+## rock or log, away from the campfire and your painted props. They live in
+## World/Rabbits, which is rebuilt every time (and not saved in main.tscn).
+func _place_rabbits(world: Node, ground: TileMapLayer) -> void:
+	if rabbits <= 0.0 or not ResourceLoader.exists(RABBIT):
+		return
+	var scene := load(RABBIT) as PackedScene
+	var holder := Node2D.new()
+	holder.name = "Rabbits"
+	holder.y_sort_enabled = true
+	world.add_child(holder)                        # no owner: not saved, made fresh each round
+	var rect := ground.get_used_rect()
+	var tile := Vector2(ground.tile_set.tile_size)
+	var area := Rect2(Vector2(rect.position) * tile, Vector2(rect.size) * tile).grow(-60.0)
+	var want := int(rabbits * area.get_area() / 1_000_000.0)
+	var placed := 0
+	var tries := 0
+	while placed < want and tries < want * 30:
+		tries += 1
+		var p := _random_point(area)
+		if p.length() < campfire_space + 80.0 or _near_painted(p, 12.0):
+			continue
+		if _rng.randf() > 1.0 - 0.65 * _forest(p):   # prefer clearings and gaps
+			continue
+		if _blocked(p, 6.0):
+			continue
+		var r: Node2D = scene.instantiate()
+		r.position = p
+		holder.add_child(r)
+		placed += 1
+
+
+## True if p (with radius r) overlaps a generated trunk/rock/log.
+func _blocked(p: Vector2, r: float) -> bool:
+	var b := Vector2i((p / 64.0).floor())
+	for dy in range(-1, 2):
+		for dx in range(-1, 2):
+			for o in _solid.get(b + Vector2i(dx, dy), []):
+				if p.distance_to(o[0]) < r + o[1]:
+					return true
+	return false
+
+
 ## Forest thickness 0..1 at p: noise patches, zero in the clearing.
 func _forest(p: Vector2) -> float:
 	return clampf(0.6 + _noise.get_noise_2dv(p) * 0.9, 0.15, 1.0) \
@@ -301,6 +410,89 @@ func _forest(p: Vector2) -> float:
 
 func _random_point(area: Rect2) -> Vector2:
 	return Vector2(_rng.randf_range(area.position.x, area.end.x), _rng.randf_range(area.position.y, area.end.y))
+
+
+## Painted props (World/Placed) -> [position, radius] areas to keep clear.
+## The radius is half the prop's widest possible size (its art x max_scale).
+func _painted_keepouts(placed: TileMapLayer) -> Array:
+	var out := []
+	if placed == null or placed.tile_set == null:
+		return out
+	var sizes := {}           # scene path -> radius (instantiate each prop type once)
+	for cell in placed.get_used_cells():
+		var src := placed.get_cell_source_id(cell)
+		var coll := placed.tile_set.get_source(src) as TileSetScenesCollectionSource
+		if coll == null:
+			continue
+		var scene := coll.get_scene_tile_scene(placed.get_cell_alternative_tile(cell))
+		if scene == null:
+			continue
+		if not sizes.has(scene.resource_path):
+			var inst := scene.instantiate()
+			var r := 8.0
+			var sprite := inst.get_node_or_null("Sprite") as Sprite2D
+			if sprite and sprite.texture:
+				var sc := maxf(float(inst.get("max_scale") if inst.get("max_scale") != null else 1.0), 1.0)
+				r = sprite.texture.get_width() * 0.5 * sc
+			inst.free()
+			sizes[scene.resource_path] = r
+		out.append([placed.to_global(placed.map_to_local(cell)), sizes[scene.resource_path]])
+	return out
+
+
+## Scenes dragged straight into World (not painted) -> [position, radius] areas.
+func _node_keepouts(nodes: Array) -> Array:
+	var out := []
+	for n in nodes:
+		if not (n is Node2D):
+			continue
+		var r := 8.0
+		var sprite: Sprite2D = n.get_node_or_null("Sprite") as Sprite2D
+		if sprite == null:
+			for c in n.get_children():
+				if c is Sprite2D:
+					sprite = c
+					break
+		if sprite and sprite.texture:
+			var sc := maxf(float(n.get("max_scale")) if n.get("max_scale") != null else absf(n.scale.x), absf(n.scale.x))
+			r = sprite.texture.get_width() * 0.5 * maxf(sc, 0.01)
+		out.append([n.global_position, r])
+	return out
+
+
+func _remember_owners(n: Node, owners: Dictionary) -> void:
+	if n.owner:
+		owners[n] = n.owner
+	for c in n.get_children():
+		_remember_owners(c, owners)
+
+
+## True if p (with this extra radius) is too close to a painted prop.
+func _near_painted(p: Vector2, extra: float) -> bool:
+	for k in _keepouts:
+		var d: Vector2 = p - k[0]
+		# Flatter in y (3/4 view): a prop is wider on screen than it is deep.
+		if Vector2(d.x, d.y * 1.6).length() < k[1] + extra:
+			return true
+	return false
+
+
+## True if a tree at p would stand in front of (below) a painted prop and its
+## canopy would cover it on screen.
+func _hides_painted(kind: String, p: Vector2) -> bool:
+	if not keep_painted_visible or not _tree_size.has(kind):
+		return false
+	var size: Vector2 = _tree_size[kind]
+	for k in _keepouts:
+		var q: Vector2 = k[0]
+		var r: float = k[1]
+		if p.y <= q.y:
+			continue                                  # behind the prop: drawn behind it
+		if p.y - size.y > q.y:
+			continue                                  # far enough in front: canopy ends below it
+		if absf(p.x - q.x) < size.x * 0.4 + r + 8.0:  # canopy is a bit narrower than the sprite
+			return true
+	return false
 
 
 ## Places a tree only if its trunk can't visibly touch another tree's trunk:
@@ -312,6 +504,8 @@ func _put_tree(kind: String, p: Vector2) -> bool:
 		return false
 	p = _props.map_to_local(_props.local_to_map(p))     # where it will actually stand
 	var sc: float = _tree_scale.get(kind, 2.6)
+	if _near_painted(p, painted_tree_clearance) or _hides_painted(kind, p):
+		return false
 	var hw: float = TREE_SHAPE[kind][0] * sc
 	var th: float = TREE_SHAPE[kind][1] * sc
 	var col := int(floor(p.x / 128.0))
@@ -334,6 +528,8 @@ func _put_tree(kind: String, p: Vector2) -> bool:
 ## solid props, radius > 0) it doesn't overlap a trunk/rock/log.
 func _put(prop: String, p: Vector2, radius: float) -> bool:
 	if not _ids.has(prop) or p.length() < campfire_space + radius:
+		return false
+	if _near_painted(p, radius + painted_clearance):
 		return false
 	var cell := _props.local_to_map(p)
 	if _taken.has(cell):

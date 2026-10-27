@@ -19,6 +19,13 @@ static var fullscreen := true
 static var difficulty := "Normal"
 static var volume := 0.8            # master volume 0..1
 
+## Advanced settings (Esc menu > Advanced settings): "main.<property>" or
+## "builder.<property>" -> value. Re-applied by main.gd every round.
+static var advanced := {}
+## Set before restarting the round from "Regenerate map": skip the start menu
+## and play this side straight away.
+static var restart_role := ""
+
 static var _loaded := false
 static var _keep_seed_once := false
 
@@ -36,6 +43,9 @@ static func load_settings() -> void:
 	fullscreen = cf.get_value("display", "fullscreen", fullscreen)
 	difficulty = cf.get_value("game", "difficulty", difficulty)
 	volume = cf.get_value("audio", "volume", volume)
+	if cf.has_section("advanced"):
+		for k in cf.get_section_keys("advanced"):
+			advanced[k] = cf.get_value("advanced", k)
 	if not MAP_SIZES.has(map_size):
 		map_size = "Medium"
 	if not DIFFICULTIES.has(difficulty):
@@ -50,6 +60,8 @@ static func save_settings() -> void:
 	cf.set_value("display", "fullscreen", fullscreen)
 	cf.set_value("game", "difficulty", difficulty)
 	cf.set_value("audio", "volume", volume)
+	for k in advanced:
+		cf.set_value("advanced", k, advanced[k])
 	cf.save(PATH)
 
 
