@@ -1,13 +1,14 @@
-[gd_scene format=3]
+[gd_scene format=3 uid="uid://cmda3s6mv7kfh"]
 
-[ext_resource type="Script" path="res://scripts/varied_prop.gd" id="1_ejcxk"]
+[ext_resource type="Script" uid="uid://cxvidcf7cremh" path="res://scripts/varied_prop.gd" id="1_ejcxk"]
 [ext_resource type="Material" path="res://assets/props/varied_material.tres" id="2_v0ld0"]
-[ext_resource type="Texture2D" path="res://assets/props/dead_tree.png" id="3_d1b6k"]
+[ext_resource type="Texture2D" uid="uid://bckvcxumlako2" path="res://assets/props/dead_tree.png" id="3_d1b6k"]
 
 [sub_resource type="OccluderPolygon2D" id="OccluderPolygon2D_cd3fi"]
-polygon = PackedVector2Array(9, 0, 7.7942286, 2.5, 4.5, 4.3301272, 5.5109107e-16, 5, -4.5, 4.3301272, -7.7942286, 2.5, -9, 6.123234e-16, -7.7942286, -2.5, -4.5, -4.3301272, -1.6532732e-15, -5, 4.5, -4.3301272, 7.7942286, -2.5)
+polygon = PackedVector2Array(13.387763, 1.798356, 6.79379, 0.7992692, 7.992695, 6.194338, 4.5, 4.3301272, 1.198904, 2.5976255, 0.7992697, 7.5930595, -3.596712, 5.7947035, -7.7928767, 6.79379, -6.593973, 1.9981735, -13.58758, 3.7965298, -7.7942286, -2.5, -4.5, -4.3301272, -1.6532732e-15, -5, 4.5, -4.3301272, 7.7942286, -2.5)
 
 [node name="DeadTree" type="Node2D" unique_id=2036121342]
+scale = Vector2(2.502285, 2.502285)
 script = ExtResource("1_ejcxk")
 min_scale = 2.0
 max_scale = 2.6
@@ -17,6 +18,7 @@ brightness_variance = 0.12
 sway = 0.35
 
 [node name="Sprite" type="Sprite2D" parent="." unique_id=1700034805]
+self_modulate = Color(0.50515974, 0.49861348, 0.48862794, 0.675)
 light_mask = 2
 material = ExtResource("2_v0ld0")
 texture = ExtResource("3_d1b6k")
@@ -26,9 +28,11 @@ offset = Vector2(-34, -171)
 [node name="Body" type="StaticBody2D" parent="." unique_id=1100927709]
 
 [node name="@CollisionPolygon2D@5" type="CollisionPolygon2D" parent="Body" unique_id=840525982]
-position = Vector2(2, -6)
-polygon = PackedVector2Array(9, 0, 7.7942286, 2.5, 4.5, 4.3301272, 5.5109107e-16, 5, -4.5, 4.3301272, -7.7942286, 2.5, -9, 6.123234e-16, -7.7942286, -2.5, -4.5, -4.3301272, -1.6532732e-15, -5, 4.5, -4.3301272, 7.7942286, -2.5)
+position = Vector2(6.3941574, -12.388678)
+scale = Vector2(2, 2)
+polygon = PackedVector2Array(9.990867, -0.39963436, 13.58758, 2.3978086, 8.192511, 1.9981737, 7.5930586, 6.1943383, 1.7983553, 2.5976257, 0.7992687, 3.79653, 0.5994513, 8.192512, -3.596713, 5.1952515, -7.792878, 7.3932424, -8.1925125, 2.9972606, -13.587582, 4.5957994, -11.589408, 0.5994525, -9.391417, -0.39963436, -7.7942286, -2.5, -4.5, -4.3301272, -1.6532732e-15, -5, 4.5, -4.3301272, 7.7942286, -2.5)
 
 [node name="VisionBlocker" type="LightOccluder2D" parent="." unique_id=1879971741]
-position = Vector2(2, -6)
+position = Vector2(6.394156, -11.989042)
+scale = Vector2(2, 2)
 occluder = SubResource("OccluderPolygon2D_cd3fi")

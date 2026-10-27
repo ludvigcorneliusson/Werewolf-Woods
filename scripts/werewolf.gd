@@ -15,13 +15,14 @@ const W_UP := preload("res://assets/characters/werewolf_up.png")
 const W_DOWN := preload("res://assets/characters/werewolf_down.png")
 ## Run strips: frames, frame size, offset that puts the feet on the origin, and
 ## "cycle" = seconds per run cycle at walking speed (sprint plays faster).
-## The werewolf is ~73 px tall (1.7x the settler).
+## "steps" = gallop beats in the cycle (hind paws, then front paws) for the
+## footstep sound. The werewolf is ~73 px tall (1.7x the settler).
 const W_RUN := {
-	"right": {"tex": preload("res://assets/characters/werewolf_run_right.png"), "frames": 12, "size": Vector2i(134, 66), "offset": Vector2(-66, -59), "cycle": 0.55},
-	"up": {"tex": preload("res://assets/characters/werewolf_run_up.png"), "frames": 12, "size": Vector2i(76, 77), "offset": Vector2(-37, -67), "cycle": 0.55},
-	"down": {"tex": preload("res://assets/characters/werewolf_run_down.png"), "frames": 13, "size": Vector2i(64, 92), "offset": Vector2(-31, -79), "cycle": 0.55},
-	"up_right": {"tex": preload("res://assets/characters/werewolf_run_up_right.png"), "frames": 13, "size": Vector2i(115, 82), "offset": Vector2(-54, -70), "cycle": 0.55},
-	"down_right": {"tex": preload("res://assets/characters/werewolf_run_down_right.png"), "frames": 14, "size": Vector2i(122, 90), "offset": Vector2(-58, -76), "cycle": 0.55},
+	"right": {"tex": preload("res://assets/characters/werewolf_run_right.png"), "frames": 12, "size": Vector2i(134, 66), "offset": Vector2(-66, -59), "cycle": 0.55, "steps": [0.25, 0.8]},
+	"up": {"tex": preload("res://assets/characters/werewolf_run_up.png"), "frames": 12, "size": Vector2i(76, 77), "offset": Vector2(-37, -67), "cycle": 0.55, "steps": [0.38, 0.8]},
+	"down": {"tex": preload("res://assets/characters/werewolf_run_down.png"), "frames": 13, "size": Vector2i(64, 92), "offset": Vector2(-31, -79), "cycle": 0.55, "steps": [0.0, 0.5]},
+	"up_right": {"tex": preload("res://assets/characters/werewolf_run_up_right.png"), "frames": 13, "size": Vector2i(115, 82), "offset": Vector2(-54, -70), "cycle": 0.55, "steps": [0.25, 0.8]},
+	"down_right": {"tex": preload("res://assets/characters/werewolf_run_down_right.png"), "frames": 14, "size": Vector2i(122, 90), "offset": Vector2(-58, -76), "cycle": 0.55, "steps": [0.25, 0.8]},
 }
 
 # --- AI (used when ai_controlled) ----------------------------------------------
@@ -52,6 +53,9 @@ func _init() -> void:
 	body_radius = 10.0
 	shadow_radius = 17.0
 	see_through_size = Vector2(19, 38)
+	# Same step sound, a bit louder and carrying further (you hear it before you see it).
+	step_volume_db = -3.0
+	step_hear_distance = 900.0
 
 
 func _ready() -> void:
@@ -84,6 +88,7 @@ func _build_frames() -> SpriteFrames:
 		sf.add_animation(run)
 		sf.set_animation_loop(run, true)
 		sf.set_animation_speed(run, r.frames / r.cycle)
+		_steps[run] = r.get("steps", DEFAULT_STEPS)
 		for i in r.frames:
 			var at := AtlasTexture.new()
 			at.atlas = r.tex

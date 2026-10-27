@@ -1,13 +1,14 @@
-[gd_scene format=3]
+[gd_scene format=3 uid="uid://dest586qfbxa0"]
 
-[ext_resource type="Script" path="res://scripts/varied_prop.gd" id="1_u83kj"]
+[ext_resource type="Script" uid="uid://cxvidcf7cremh" path="res://scripts/varied_prop.gd" id="1_u83kj"]
 [ext_resource type="Material" path="res://assets/props/varied_material.tres" id="2_j5jmi"]
-[ext_resource type="Texture2D" path="res://assets/props/pine_dark.png" id="3_wa4a5"]
+[ext_resource type="Texture2D" uid="uid://cuga6ea1tccrq" path="res://assets/props/pine_dark.png" id="3_wa4a5"]
 
 [sub_resource type="OccluderPolygon2D" id="OccluderPolygon2D_v56ab"]
-polygon = PackedVector2Array(6, 0, 5.196152, 1.5, 3, 2.598076, 3.6739403e-16, 3, -3, 2.598076, -5.196152, 1.5, -6, 3.6739403e-16, -5.196152, -1.5, -3, -2.598076, -1.1021821e-15, -3, 3, -2.598076, 5.196152, -1.5)
+polygon = PackedVector2Array(7.193425, -0.19707775, 7.5930595, 1.8010958, 3, 2.598076, 3.5967126, 4.9981737, -1.9981736, 6.1970778, -7.5930595, 2.2007306, -6, 3.6739403e-16, -5.196152, -1.5, -3, -2.598076, -1.1021821e-15, -3, 3, -2.598076, 5.196152, -1.5)
 
 [node name="PineDark" type="Node2D" unique_id=888741571]
+scale = Vector2(2.502285, 2.502285)
 script = ExtResource("1_u83kj")
 min_scale = 2.0
 max_scale = 2.6
@@ -17,6 +18,7 @@ brightness_variance = 0.15
 sway = 1.0
 
 [node name="Sprite" type="Sprite2D" parent="." unique_id=898992115]
+self_modulate = Color(0.5103194, 0.49815133, 0.48578492, 1)
 light_mask = 2
 material = ExtResource("2_j5jmi")
 texture = ExtResource("3_wa4a5")
@@ -27,8 +29,8 @@ offset = Vector2(-27, -101)
 
 [node name="@CollisionPolygon2D@3" type="CollisionPolygon2D" parent="Body" unique_id=1593470219]
 position = Vector2(0, -3)
-polygon = PackedVector2Array(5, 0, 4.3301272, 1.5, 2.5, 2.598076, 3.061617e-16, 3, -2.5, 2.598076, -4.3301272, 1.5, -5, 3.6739403e-16, -4.3301272, -1.5, -2.5, -2.598076, -9.18485e-16, -3, 2.5, -2.598076, 4.3301272, -1.5)
+polygon = PackedVector2Array(7.9926944, 1.8010958, 4.3301272, 1.5, 3.5967126, 4.598539, 0.39963472, 4.198904, -1.9981736, 5.397808, -4.395982, 3.7992694, -8.392329, 1.8010958, -4.3301272, -1.5, -2.5, -2.598076, -9.18485e-16, -3, 2.5, -2.598076, 5.594886, -1.3959818)
 
 [node name="VisionBlocker" type="LightOccluder2D" parent="." unique_id=1971883634]
-position = Vector2(0, -3)
+position = Vector2(-9.536743e-07, -3.1970778)
 occluder = SubResource("OccluderPolygon2D_v56ab")

@@ -21,16 +21,22 @@ const TEX_DOWN_RIGHT := preload("res://assets/characters/settler_down_right.png"
 ## Run strips: frame count, frame size and the offset that puts the feet on the
 ## node origin (lined up with the idle sprite so start/stop doesn't jump).
 const RUN := {
-	"right": {"tex": preload("res://assets/characters/settler_run_right.png"), "frames": 29, "size": Vector2i(31, 47), "offset": Vector2(-15, -45), "cycle": 1.1},
-	"up": {"tex": preload("res://assets/characters/settler_run_up.png"), "frames": 16, "size": Vector2i(27, 48), "offset": Vector2(-13, -44), "cycle": 0.5},
-	"down": {"tex": preload("res://assets/characters/settler_run_down.png"), "frames": 12, "size": Vector2i(31, 45), "offset": Vector2(-16, -42), "cycle": 0.5},
-	"up_right": {"tex": preload("res://assets/characters/settler_run_up_right.png"), "frames": 16, "size": Vector2i(28, 48), "offset": Vector2(-12, -44), "cycle": 0.5},
-	"down_right": {"tex": preload("res://assets/characters/settler_run_down_right.png"), "frames": 30, "size": Vector2i(32, 46), "offset": Vector2(-18, -41), "cycle": 0.9},
+	"right": {"tex": preload("res://assets/characters/settler_run_right.png"), "frames": 29, "size": Vector2i(31, 47), "offset": Vector2(-15, -45), "cycle": 1.1, "steps": [0.1, 0.36, 0.62, 0.88]},
+	"up": {"tex": preload("res://assets/characters/settler_run_up.png"), "frames": 16, "size": Vector2i(27, 48), "offset": Vector2(-13, -44), "cycle": 0.5, "steps": [0.0, 0.5]},
+	"down": {"tex": preload("res://assets/characters/settler_run_down.png"), "frames": 12, "size": Vector2i(31, 45), "offset": Vector2(-16, -42), "cycle": 0.5, "steps": [0.15, 0.65]},
+	"up_right": {"tex": preload("res://assets/characters/settler_run_up_right.png"), "frames": 16, "size": Vector2i(28, 48), "offset": Vector2(-12, -44), "cycle": 0.5, "steps": [0.25, 0.7]},
+	"down_right": {"tex": preload("res://assets/characters/settler_run_down_right.png"), "frames": 30, "size": Vector2i(32, 46), "offset": Vector2(-18, -41), "cycle": 0.9, "steps": [0.12, 0.38, 0.62, 0.88]},
 }
 ## "cycle" = seconds per full run cycle (two steps) at WALK_SPEED, per direction.
 ## Higher = slower legs. Sprint plays faster automatically. Each direction has
 ## its own value. Left, up-left and down-left mirror right, up_right, down_right
 ## (and share their cycle).
+## "steps" = where in the cycle a foot hits the ground (0..1, 0 = first frame);
+## a footstep sound plays as the animation passes each one. The right and
+## down_right strips hold two strides, so they have four steps.
+
+const STEP_SOUND := "res://assets/sounds/footsteps/grass_step.wav"   # default footstep
+const DEFAULT_STEPS := [0.0, 0.5]
 
 ## The character you control has the camera and the light; others (an AI
 ## werewolf) are darkened by the night like the props.
@@ -39,6 +45,8 @@ var is_local := true
 var ai_controlled := false
 var ai_dir := Vector2.ZERO
 var ai_sprint := false
+## Keyboard control on/off (main.gd turns it off while the Esc menu is open).
+var input_enabled := true
 var walk_speed := WALK_SPEED
 var sprint_speed := SPRINT_SPEED
 var body_radius := 6.0
@@ -64,6 +72,17 @@ var idle_sway_speed := 0.18
 var _idle_mat: ShaderMaterial
 var _idle := 0.0
 
+# Footsteps (grass). Synced to the run animation, so they speed up with it
+# when sprinting. main.gd sets these from its Footsteps settings.
+var footsteps_enabled := true
+var step_volume_db := -6.0         # same every step; the sound itself is never pitched
+var step_hear_distance := 600.0    # world px; how far others hear these steps
+var step_sound: AudioStream        # current footstep sound (null = STEP_SOUND); change with set_step_sound()
+var _step_player: Node             # AudioStreamPlayer (you) or AudioStreamPlayer2D (others)
+var _step_phase := -1.0            # last run-cycle phase (0..1); -1 = not running
+var _step_cooldown := 0.0
+var _steps := {}                   # run animation -> step phases
+
 var _moving := false
 var _speed := 0.0
 var _offsets := {}
@@ -88,6 +107,7 @@ func _ready() -> void:
 	sprite.light_mask = 4          # characters: lit only by vision and fires
 	add_child(sprite)
 	_play("idle_down")
+	_setup_footsteps()
 
 	if not is_local:
 		return
@@ -118,10 +138,14 @@ func _ready() -> void:
 
 
 func _physics_process(_delta: float) -> void:
-	var dir := ai_dir.limit_length(1.0) if ai_controlled else Input.get_vector("move_left", "move_right", "move_up", "move_down")
+	var dir := Vector2.ZERO
+	if ai_controlled:
+		dir = ai_dir.limit_length(1.0)
+	elif input_enabled:
+		dir = Input.get_vector("move_left", "move_right", "move_up", "move_down")
 	_moving = dir.length() > 0.05
 
-	var sprint_on := ai_sprint if ai_controlled else Input.is_action_pressed("sprint")
+	var sprint_on := ai_sprint if ai_controlled else (input_enabled and Input.is_action_pressed("sprint"))
 	var sprinting := sprint_on and _moving   # no stamina: sprint forever
 
 	var speed := sprint_speed if sprinting else walk_speed
@@ -137,6 +161,88 @@ func _physics_process(_delta: float) -> void:
 	_update_sprite()
 	_update_idle(_delta)
 	queue_redraw()
+
+
+func _process(delta: float) -> void:
+	_update_footsteps(delta)
+
+
+# --- footsteps ----------------------------------------------------------------
+
+func _setup_footsteps() -> void:
+	# Your own steps: plain (not positional), so they always sound the same.
+	# Other characters: positional, so you hear where they are and how far.
+	_step_player = AudioStreamPlayer.new() if is_local else AudioStreamPlayer2D.new()
+	if step_sound == null:
+		step_sound = load(STEP_SOUND)
+	_step_player.stream = step_sound
+	_step_player.max_polyphony = 2          # let the tail of one step finish under the next
+	add_child(_step_player)
+	apply_footsteps()
+
+
+## Changes the footstep sound, also while the game runs (e.g. a different sound
+## per ground type). null = back to the default STEP_SOUND. Takes effect from
+## the next step; a step that is already playing finishes first.
+func set_step_sound(stream: AudioStream) -> void:
+	if stream == null:
+		stream = load(STEP_SOUND)
+	if stream == step_sound:
+		return
+	step_sound = stream
+	if _step_player and not _step_player.playing:
+		_step_player.stream = stream
+
+
+## Pushes the footstep settings to the audio player (call after changing them).
+func apply_footsteps() -> void:
+	if _step_player == null:
+		return
+	_step_player.volume_db = step_volume_db
+	if _step_player is AudioStreamPlayer2D:
+		_step_player.max_distance = step_hear_distance
+
+
+## Plays a step each time the run animation passes a foot-down point.
+## The animation speed already follows walk/sprint speed (speed_scale), so the
+## step rate does too.
+func _update_footsteps(delta: float) -> void:
+	_step_cooldown -= delta
+	var running := _moving and sprite != null and sprite.is_playing() \
+			and sprite.animation.begins_with("run_") and is_physics_processing()
+	if not footsteps_enabled or not running or _step_player == null:
+		_step_phase = -1.0
+		return
+	var n := sprite.sprite_frames.get_frame_count(sprite.animation)
+	var phase := (sprite.frame + sprite.frame_progress) / float(n)
+	if _step_phase < 0.0:
+		# Just started moving: first foot goes down right away.
+		_step_phase = phase
+		_play_step()
+		# Skip a scheduled footfall that comes too soon after this one.
+		var cycle := n / maxf(sprite.sprite_frames.get_animation_speed(sprite.animation) * sprite.speed_scale, 0.01)
+		var per_cycle: int = maxi(_steps.get(sprite.animation, DEFAULT_STEPS).size(), 1)
+		_step_cooldown = maxf(_step_cooldown, cycle / per_cycle * 0.6)
+		return
+	var prev := _step_phase
+	_step_phase = phase
+	var wrapped := phase < prev
+	if wrapped and prev - phase < 0.5:
+		return                                  # small jump back (direction change), not a new cycle
+	for s: float in _steps.get(sprite.animation, DEFAULT_STEPS):
+		var hit := (s > prev or s <= phase) if wrapped else (s > prev and s <= phase)
+		if hit:
+			_play_step()
+			return
+
+
+func _play_step() -> void:
+	if _step_cooldown > 0.0:                    # guards against key-tapping spam
+		return
+	_step_cooldown = 0.09
+	if _step_player.stream != step_sound:
+		_step_player.stream = step_sound
+	_step_player.play()
 
 
 ## Fades the breathing in after he stops and out as soon as he moves.
@@ -204,6 +310,7 @@ func _build_frames() -> SpriteFrames:
 		sf.add_animation(run)
 		sf.set_animation_loop(run, true)
 		sf.set_animation_speed(run, r.frames / r.cycle)
+		_steps[run] = r.get("steps", DEFAULT_STEPS)
 		for i in r.frames:
 			var at := AtlasTexture.new()
 			at.atlas = r.tex

@@ -6,7 +6,8 @@ extends Node
 ## It replaces the World node (ground, pine forest, campfire, spawn) - anything
 ## you painted by hand in World is lost. Not undoable with Ctrl+Z: if you don't
 ## like the result, just close main.tscn without saving.
-## It does nothing in the running game.
+## In the running game main.gd uses it to generate a fresh forest every round
+## from the menu settings (map size + seed); the other settings here still apply.
 
 ## Click to regenerate the World with the settings below.
 @export_tool_button("Rebuild World", "Reload") var rebuild_button = _on_rebuild_pressed
@@ -92,8 +93,9 @@ const TREE_SHAPE := {
 
 
 func _ready() -> void:
-	if not Engine.is_editor_hint():
-		queue_free()
+	# Kept in the running game too: main.gd uses it to generate the forest from
+	# the menu settings (map size + seed) at the start of every round.
+	pass
 
 
 func _on_rebuild_pressed() -> void:

@@ -79,7 +79,8 @@ var squash := 0.78
 var start := 0.3
 var density := 1.5
 var dark_color := Color.BLACK
-var darkness := 1.0
+var darkness := 1.0               # darkness at full night (Fog setting)
+var night := 1.0                  # 0 = day .. 1 = night (day_night.gd via main.gd), scales darkness
 var cell := 16
 var trunk_absorption := 1.0      # x trunk absorption
 var canopy_absorption := 1.0     # x canopy absorption
@@ -352,12 +353,21 @@ func _flood(from: Vector2, reach: float) -> Array:
 	return [bytes, Vector2i(w, h), Vector2i(x0, y0)]
 
 
+## Day/night: how far into the night it is (0..1). Cheap, no relighting.
+func set_night(v: float) -> void:
+	if is_equal_approx(v, night) and _mat != null:
+		return
+	night = v
+	if _mat:
+		_param("darkness", darkness * night if visible else 0.0)
+
+
 ## Pushes the look settings (rebuild = cell layout or reach changed).
 func apply(rebuild: bool = false) -> void:
 	if _mat == null:
 		return
 	_param("dark_color", Vector3(dark_color.r, dark_color.g, dark_color.b))
-	_param("darkness", darkness if visible else 0.0)
+	_param("darkness", darkness * night if visible else 0.0)
 	for m in [PROP_MATERIAL, CHARACTER_MATERIAL]:
 		m.set_shader_parameter("dk_radius", vision_radius)
 		m.set_shader_parameter("dk_squash", squash)

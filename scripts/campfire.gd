@@ -18,6 +18,7 @@ extends Node2D
 var _noise := FastNoiseLite.new()
 var _t := 0.0
 var flicker_now := 0.0       # read by darkness.gd so the lit area flickers with the glow
+var glow_scale := 1.0        # set by main.gd's day/night: dim glow in daylight
 
 
 func _ready() -> void:
@@ -31,6 +32,6 @@ func _process(delta: float) -> void:
 	_t += delta * flicker_speed
 	var n := _noise.get_noise_1d(_t)                 # roughly -0.6..0.6
 	flicker_now = n * flicker_strength * 1.8
-	light.energy = light_energy * (1.0 + n * flicker_strength * 1.8)
+	light.energy = light_energy * glow_scale * (1.0 + n * flicker_strength * 1.8)
 	var tex_w := float(light.texture.get_width()) if light.texture else 256.0
 	light.texture_scale = light_radius * 2.0 / tex_w * (1.0 + n * flicker_strength * 0.15)

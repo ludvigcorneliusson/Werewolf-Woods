@@ -7,8 +7,12 @@ const Player := preload("res://scripts/player.gd")
 const Darkness := preload("res://scripts/darkness.gd")
 const StartMenu := preload("res://scripts/start_menu.gd")
 const Werewolf := preload("res://scripts/werewolf.gd")
+const Footprints := preload("res://scripts/footprints.gd")
 const CHARACTER_MATERIAL := preload("res://assets/characters/character_material.tres")
 const PlantPush := preload("res://scripts/plant_push.gd")
+const DayNight := preload("res://scripts/day_night.gd")
+const GameSettings := preload("res://scripts/game_settings.gd")
+const EscapeMenu := preload("res://scripts/escape_menu.gd")
 ## Shared by every prop scene; we feed it the player position so trees fade
 ## when the player walks behind them.
 const PROP_MATERIAL := preload("res://assets/props/prop_material.tres")
@@ -36,6 +40,63 @@ var player_role := "human"
 ## God mode (F) always allows it.
 @export var scroll_zoom := false
 
+# --- Footprints ---------------------------------------------------------------
+# The villager leaves faint footprints that fade over time.
+@export_group("Footprints")
+## Leave footprints.
+@export var footprints_enabled := true:
+	set(v):
+		footprints_enabled = v
+		_apply_footprints()
+## How dark a fresh footprint is (0 = invisible, 1 = solid).
+@export_range(0.0, 1.0, 0.01) var footprint_opacity := 0.22:
+	set(v):
+		footprint_opacity = v
+		_apply_footprints()
+## Colour of the footprints (darkened soil).
+@export var footprint_color := Color(0.12, 0.08, 0.04):
+	set(v):
+		footprint_color = v
+		_apply_footprints()
+## Seconds until a footprint has completely faded.
+@export_range(1.0, 600.0, 1.0, "suffix:s") var footprint_lifetime := 25.0:
+	set(v):
+		footprint_lifetime = v
+		_apply_footprints()
+## When the fading starts, as a fraction of the lifetime (0 = fades from the start).
+@export_range(0.0, 0.99, 0.01) var footprint_fade_start := 0.4:
+	set(v):
+		footprint_fade_start = v
+		_apply_footprints()
+## Distance between footprints while walking (world px).
+@export_range(4.0, 60.0, 0.5, "suffix:px") var footprint_step := 13.0:
+	set(v):
+		footprint_step = v
+		_apply_footprints()
+## Longer strides when sprinting (x step distance).
+@export_range(1.0, 3.0, 0.05) var footprint_sprint_stride := 1.4:
+	set(v):
+		footprint_sprint_stride = v
+		_apply_footprints()
+## Half-size of one footprint (world px).
+@export var footprint_size := Vector2(2.5, 1.6):
+	set(v):
+		footprint_size = v
+		_apply_footprints()
+## Sideways distance of each foot from the walking line (world px).
+@export_range(0.0, 10.0, 0.5, "suffix:px") var footprint_spacing := 2.5:
+	set(v):
+		footprint_spacing = v
+		_apply_footprints()
+## Maximum footprints kept at once (oldest disappear first).
+@export_range(10, 5000, 10) var footprint_max := 600:
+	set(v):
+		footprint_max = v
+		_apply_footprints()
+@export_group("")
+
+var _footprints: Node2D
+
 # --- See-through ----------------------------------------------------------------
 # When you stand behind a tree/prop, the part of it covering you turns see-through.
 @export_group("See-through")
@@ -51,20 +112,50 @@ var player_role := "human"
 @export_group("Werewolf")
 ## When you play the human: an AI werewolf hunts you.
 @export var ai_werewolf := true
-## Seconds before the AI werewolf appears (time to run and hide).
-@export_range(0.0, 300.0, 1.0, "suffix:s") var werewolf_delay := 20.0
+## When the AI werewolf appears (see Day & Night for the timing).
+@export_enum("Dusk starts", "Night falls") var werewolf_spawns_at := "Dusk starts"
 ## It spawns at least this far from you.
 @export_range(200.0, 5000.0, 10.0, "suffix:px") var werewolf_spawn_distance := 1400.0
 ## Distance at which it notices you and starts chasing.
 @export_range(50.0, 1500.0, 5.0, "suffix:px") var werewolf_sense := 320.0
 ## Distance at which it loses you.
 @export_range(100.0, 3000.0, 10.0, "suffix:px") var werewolf_lose := 560.0
-## Werewolf speeds (the human walks 120, sprints 200).
+## Werewolf speeds on Normal (the human walks 120, sprints 200). The menu Difficulty scales the AI werewolf.
 @export_range(20.0, 600.0, 5.0) var werewolf_walk_speed := 140.0
 @export_range(20.0, 800.0, 5.0) var werewolf_sprint_speed := 215.0
 @export_group("")
 
 var werewolf: CharacterBody2D
+
+# --- Day & Night --------------------------------------------------------------
+# Each round starts in daylight, fades through dusk and stays night. The night
+# look itself (darkness, vision, night tint) is set in the Fog group.
+@export_group("Day & Night")
+## Seconds of daylight at the start of a round (time to scatter and pick a spot).
+@export_range(0.0, 600.0, 1.0, "suffix:s") var day_length := 45.0:
+	set(v):
+		day_length = v
+		if _day_night:
+			_day_night.day_length = v
+## Seconds for the light to fade from day into full night.
+@export_range(0.0, 300.0, 1.0, "suffix:s") var dusk_length := 20.0:
+	set(v):
+		dusk_length = v
+		if _day_night:
+			_day_night.dusk_length = v
+## Colour of the world in daylight (white = unchanged art).
+@export var day_tint := Color(1.0, 0.98, 0.94)
+## Colour halfway through dusk (the sunset).
+@export var dusk_tint := Color(1.0, 0.7, 0.52)
+## How bright campfires glow in daylight (1 = full night glow).
+@export_range(0.0, 1.0, 0.01) var campfire_day_glow := 0.1
+## Debug: start the round at this point (0 = morning; day_length = dusk starts).
+@export_range(0.0, 900.0, 1.0, "suffix:s") var start_time := 0.0
+@export_group("")
+
+var _day_night: Node
+var _escape_menu: CanvasLayer
+var _round_started := false
 var _round_label: Label
 
 # --- God mode -----------------------------------------------------------------
@@ -226,6 +317,42 @@ var _round_label: Label
 		idle_sway_speed = v
 		_apply_idle()
 
+# --- Footsteps ----------------------------------------------------------------
+# One grass footstep sound, synced to the run animations: it plays more often
+# when sprinting, but always at the same pitch.
+@export_group("Footsteps")
+## Play footstep sounds.
+@export var footsteps_enabled := true:
+	set(v):
+		footsteps_enabled = v
+		_apply_footsteps()
+## The settler's footstep sound (drag any .wav/.ogg/.mp3 here). Empty = default grass step.
+@export var settler_step_sound: AudioStream = preload("res://assets/sounds/footsteps/grass_step.wav"):
+	set(v):
+		settler_step_sound = v
+		_apply_footsteps()
+## The werewolf's footstep sound. Empty = default grass step.
+@export var werewolf_step_sound: AudioStream = preload("res://assets/sounds/footsteps/grass_step.wav"):
+	set(v):
+		werewolf_step_sound = v
+		_apply_footsteps()
+## Settler step volume.
+@export_range(-40.0, 12.0, 0.5, "suffix:dB") var settler_step_volume := -6.0:
+	set(v):
+		settler_step_volume = v
+		_apply_footsteps()
+## Werewolf step volume.
+@export_range(-40.0, 12.0, 0.5, "suffix:dB") var werewolf_step_volume := -3.0:
+	set(v):
+		werewolf_step_volume = v
+		_apply_footsteps()
+## How far away you can hear the AI werewolf's steps.
+@export_range(100.0, 3000.0, 10.0, "suffix:px") var werewolf_hear_distance := 900.0:
+	set(v):
+		werewolf_hear_distance = v
+		_apply_footsteps()
+@export_group("")
+
 # --- Plants -------------------------------------------------------------------
 # Ferns, grass and mushrooms bend away when you walk through them. Each plant
 # scene has its own "Bend" (0 = not pushed) on its root.
@@ -274,12 +401,23 @@ var _plant_push: Node
 
 func _ready() -> void:
 	_setup_input()
+	GameSettings.load_settings()
+	GameSettings.apply_display(get_window())
+	GameSettings.apply_volume()
 
 	# Night: an organic darkness overlay with holes around the player and fires.
 	darkness = CanvasModulate.new()
 	add_child(darkness)
 	_dark = Darkness.new()
 	add_child(_dark)
+
+	_day_night = DayNight.new()
+	_day_night.day_length = day_length
+	_day_night.dusk_length = dusk_length
+	_day_night.time = start_time
+	_day_night.dusk_started.connect(_on_dusk)
+	_day_night.night_fell.connect(_on_night)
+	add_child(_day_night)
 
 	player = Player.new()
 	add_child(player)
@@ -288,6 +426,7 @@ func _ready() -> void:
 	_apply_fog()
 
 	_build_hud()
+	_generate_world()
 	world = get_node_or_null("World")
 	if use_generated_map or world == null:
 		if world:
@@ -297,12 +436,21 @@ func _ready() -> void:
 		_setup_painted_world()
 	_apply_wind()
 	_apply_idle()
+	_apply_footsteps()
+	_footprints = Footprints.new()
+	add_child(_footprints)
+	_footprints.walker = player
+	_apply_footprints()
 	_rebuild_darkness.call_deferred()
 	if show_start_menu:
 		var menu := StartMenu.new()
 		add_child(menu)
 		menu.chosen.connect(_on_role_chosen)
+		menu.map_changed.connect(_on_map_settings_changed)
 		get_tree().paused = true                # the forest shows behind the menu, frozen
+	else:
+		_day_night.start()
+		_round_started = true
 	_plant_push = PlantPush.new()
 	_plant_push.player = player
 	_plant_push.props = world.get_node_or_null("Props") if is_instance_valid(world) else null
@@ -312,6 +460,7 @@ func _ready() -> void:
 
 
 func _process(_delta: float) -> void:
+	_apply_sky()
 	if map:
 		map.set_player_position(player.global_position)
 	else:
@@ -333,6 +482,22 @@ func _apply_wind() -> void:
 	m.set_shader_parameter("wind_dir", wind_direction if wind_direction != Vector2.ZERO else Vector2.RIGHT)
 
 
+func _apply_footprints() -> void:
+	if _footprints == null:
+		return
+	_footprints.enabled = footprints_enabled
+	_footprints.opacity = footprint_opacity
+	_footprints.color = footprint_color
+	_footprints.lifetime = footprint_lifetime
+	_footprints.fade_start = footprint_fade_start
+	_footprints.step_distance = footprint_step
+	_footprints.sprint_step_scale = footprint_sprint_stride
+	_footprints.foot_size = footprint_size
+	_footprints.foot_spacing = footprint_spacing
+	_footprints.max_prints = footprint_max
+	_footprints.apply()
+
+
 func _apply_idle() -> void:
 	if player == null:
 		return
@@ -341,6 +506,19 @@ func _apply_idle() -> void:
 	player.breath_speed = breath_speed
 	player.idle_sway = idle_sway
 	player.idle_sway_speed = idle_sway_speed
+
+
+func _apply_footsteps() -> void:
+	for c in [player, werewolf]:
+		if not is_instance_valid(c):
+			continue
+		var wolf: bool = c.get_script() == Werewolf
+		c.footsteps_enabled = footsteps_enabled
+		c.step_volume_db = werewolf_step_volume if wolf else settler_step_volume
+		c.set_step_sound(werewolf_step_sound if wolf else settler_step_sound)
+		if wolf:
+			c.step_hear_distance = werewolf_hear_distance
+		c.apply_footsteps()
 
 
 func _apply_plants() -> void:
@@ -358,7 +536,7 @@ func _apply_fog() -> void:
 	if darkness == null or player == null or _dark == null:
 		return
 	# Scene tint inside the light (the old vision colour/brightness).
-	darkness.color = (vision_tint * vision_brightness) if fog_enabled else Color.WHITE
+	_apply_sky()
 	darkness.visible = true
 	if player.light:
 		player.light.enabled = false            # darkness is drawn by the overlay now
@@ -377,6 +555,36 @@ func _apply_fog() -> void:
 	_dark.side_shade = prop_side_shade
 	_dark.back_shade = prop_back_shade
 	_dark.apply(true)
+
+
+## Day & night look: tint, how dark the night overlay is, campfire glow.
+## Cheap; runs every frame (only the darkness amount changes, no relighting).
+func _apply_sky() -> void:
+	if darkness == null or _dark == null or _day_night == null:
+		return
+	var n: float = _day_night.night
+	var night_tint := vision_tint * vision_brightness
+	var tint := day_tint.lerp(dusk_tint, n * 2.0) if n < 0.5 else dusk_tint.lerp(night_tint, (n - 0.5) * 2.0)
+	darkness.color = tint if fog_enabled else Color.WHITE
+	# Darkness creeps in after the sunset has started; full at nightfall.
+	_dark.set_night(smoothstep(0.15, 1.0, n))
+	for f in get_tree().get_nodes_in_group("light_sources"):
+		if f.get("glow_scale") != null:
+			f.glow_scale = lerpf(campfire_day_glow, 1.0, smoothstep(0.0, 0.7, n))
+
+
+func _on_dusk() -> void:
+	if werewolf_spawns_at == "Dusk starts" and player_role == "human" and ai_werewolf:
+		_spawn_ai_werewolf()            # shows its own message
+	else:
+		_flash("Dusk is falling...", 3.0)
+
+
+func _on_night() -> void:
+	if werewolf_spawns_at == "Night falls" and player_role == "human" and ai_werewolf:
+		_spawn_ai_werewolf()
+	else:
+		_flash("Night has fallen.", 3.0)
 
 
 ## Rebuilds which cells hold tree trunks (from the props) and the campfire light.
@@ -400,13 +608,22 @@ func _map_rect() -> Rect2:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if event.is_action_pressed("regenerate") and map:
+	if event.is_action_pressed("ui_cancel") and _round_started:
+		_toggle_escape_menu()
+		get_viewport().set_input_as_handled()
+	elif _escape_menu and _escape_menu.is_open():
+		return                              # no game hotkeys while the menu is open
+	elif event.is_action_pressed("regenerate") and map:
 		_new_map(randi())
+	elif event.is_action_pressed("skip_time"):
+		_day_night.skip()
 	elif event.is_action_pressed("god_mode"):
 		_set_god_mode(not god_mode)
 	elif event.is_action_pressed("toggle_fullscreen"):
 		var w := get_window()
-		w.mode = Window.MODE_WINDOWED if w.mode in [Window.MODE_FULLSCREEN, Window.MODE_EXCLUSIVE_FULLSCREEN] else Window.MODE_FULLSCREEN
+		GameSettings.fullscreen = not (w.mode in [Window.MODE_FULLSCREEN, Window.MODE_EXCLUSIVE_FULLSCREEN])
+		GameSettings.apply_display(w)
+		GameSettings.save_settings()
 	elif (scroll_zoom or god_mode) and event is InputEventMouseButton and event.pressed:
 		var cam: Camera2D = player.camera
 		if event.button_index == MOUSE_BUTTON_WHEEL_UP:
@@ -417,13 +634,28 @@ func _unhandled_input(event: InputEvent) -> void:
 
 ## God mode: no fog, mouse-wheel zoom, no collisions, fast movement, free camera.
 ## Turning it off restores fog, camera zoom and limits.
+## Esc menu: the game keeps running (no pause); your character stands still.
+func _toggle_escape_menu() -> void:
+	if _escape_menu == null:
+		_escape_menu = EscapeMenu.new()
+		add_child(_escape_menu)
+		_escape_menu.closed.connect(func():
+			if is_instance_valid(player):
+				player.input_enabled = true)
+	if _escape_menu.is_open():
+		_escape_menu.close()
+	else:
+		_escape_menu.open()
+		player.input_enabled = false
+
+
 func _on_role_chosen(role: String) -> void:
 	player_role = role
+	_round_started = true
 	if role == "werewolf":
 		_become_werewolf()
-	elif ai_werewolf:
-		get_tree().create_timer(werewolf_delay, false).timeout.connect(_spawn_ai_werewolf)
 	get_tree().paused = false
+	_day_night.start()                  # werewolf spawns from _on_dusk / _on_night
 
 
 ## Play as the werewolf: swap the settler for a werewolf you control.
@@ -445,6 +677,8 @@ func _become_werewolf() -> void:
 	wolf.camera.reset_smoothing()
 	old.queue_free()
 	player = wolf
+	if _footprints:
+		_footprints.walker = null          # only the villager leaves footprints
 	_dark.player = wolf
 	_dark.camera = wolf.camera
 	_dark.apply()
@@ -452,6 +686,7 @@ func _become_werewolf() -> void:
 		_plant_push.player = wolf
 	_apply_fog()
 	_apply_idle()
+	_apply_footsteps()
 
 
 ## AI werewolf when you play the human: appears far away and hunts you.
@@ -469,8 +704,8 @@ func _spawn_ai_werewolf() -> void:
 	var wolf := Werewolf.new()
 	wolf.is_local = false
 	wolf.ai_controlled = true
-	wolf.walk_speed = werewolf_walk_speed
-	wolf.sprint_speed = werewolf_sprint_speed
+	wolf.walk_speed = werewolf_walk_speed * GameSettings.werewolf_speed_scale()     # menu Difficulty
+	wolf.sprint_speed = werewolf_sprint_speed * GameSettings.werewolf_speed_scale()
 	wolf.target = player
 	wolf.map_rect = rect
 	wolf.sense_radius = werewolf_sense
@@ -480,6 +715,7 @@ func _spawn_ai_werewolf() -> void:
 	wolf.reset_physics_interpolation()
 	wolf.caught.connect(_on_caught)
 	werewolf = wolf
+	_apply_footsteps()
 	_flash("The werewolf is awake...", 3.0)
 
 
@@ -556,7 +792,25 @@ func _new_map(new_seed: int) -> void:
 	cam.limit_bottom = int(map.map_size.y)
 	cam.reset_smoothing()
 
-	_hud_label.text = "Seed %d   |   WASD move · Shift sprint · R new map · F god mode · Mouse wheel zoom" % seed_value
+	_hud_label.text = "Seed %d   |   WASD move · Shift sprint · R new map · F god mode · N skip time · Mouse wheel zoom" % seed_value
+
+
+## A fresh forest every round from the menu settings (map size + seed), built by
+## the WorldBuilder node (its forest/prop settings are tuned on that node).
+func _generate_world() -> void:
+	var builder := get_node_or_null("WorldBuilder")
+	if builder == null or use_generated_map:
+		return
+	GameSettings.next_round_seed()
+	builder.ground_tiles = GameSettings.map_tiles()
+	builder.map_seed = GameSettings.map_seed
+	builder.rebuild(self)
+
+
+## Map size or seed changed in the menu: restart so the new forest shows.
+func _on_map_settings_changed() -> void:
+	GameSettings.keep_seed_for_next_round()
+	get_tree().reload_current_scene()
 
 
 func _setup_painted_world() -> void:
@@ -569,7 +823,7 @@ func _setup_painted_world() -> void:
 	player.camera.zoom = Vector2(camera_zoom, camera_zoom)   # Camera settings on Main
 	_add_world_borders()
 	player.camera.reset_smoothing()
-	_hud_label.text = "WASD move · Shift sprint · F god mode · F11 fullscreen" + (" · Mouse wheel zoom" if scroll_zoom else "")
+	_hud_label.text = "Seed %d (%s)   |   WASD move · Shift sprint · F god mode · N skip time · F11 fullscreen" % [GameSettings.map_seed, GameSettings.map_size] + (" · Mouse wheel zoom" if scroll_zoom else "")
 
 
 func _add_world_borders() -> void:
@@ -634,6 +888,7 @@ func _setup_input() -> void:
 		"sprint": [KEY_SHIFT],
 		"regenerate": [KEY_R],
 		"god_mode": [KEY_F],
+		"skip_time": [KEY_N],
 		"toggle_fullscreen": [KEY_F11],
 	}
 	for action in bindings:
