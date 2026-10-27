@@ -32,14 +32,16 @@ extends SceneTree
 const TREE_VARY := {"min_scale": 2.0, "max_scale": 2.6, "hue_variance": 0.03, "saturation_variance": 0.2, "brightness_variance": 0.15, "sway": 1.0}
 const DEAD_VARY := {"min_scale": 2.0, "max_scale": 2.6, "hue_variance": 0.015, "saturation_variance": 0.15, "brightness_variance": 0.12, "sway": 0.35}
 const PROPS := [
-	{"name": "pine_tall", "foot": 4, "solid": {"circle": 8.0}, "vision": Vector2(11, 6), "big": true, "vary": TREE_VARY},
-	{"name": "pine_dark", "foot": 3, "solid": {"circle": 4.5}, "vision": Vector2(7, 4), "big": true, "vary": TREE_VARY},
-	{"name": "dead_pine", "foot": 4, "solid": {"circle": 7.0}, "vision": Vector2(10, 6), "big": true, "vary": DEAD_VARY},
-	{"name": "dead_tree", "foot": 4, "solid": {"circle": 7.0}, "vision": Vector2(10, 6), "big": true, "vary": DEAD_VARY},
-	{"name": "stump", "foot": 3, "solid": {"ellipse": Vector2(12, 5)}, "vision": Vector2.ZERO, "big": true},
+	# Trunk footprints: flat ellipses centred where the trunk meets the ground
+	# (measured from the art, a few px above the root tips = the foot point).
+	{"name": "pine_tall", "foot": 4, "solid": {"ellipse": Vector2(10, 5), "at": Vector2(0, -6)}, "vision": Vector2(11, 5), "vision_at": Vector2(0, -6), "big": true, "vary": TREE_VARY},
+	{"name": "pine_dark", "foot": 3, "solid": {"ellipse": Vector2(5, 3), "at": Vector2(0, -3)}, "vision": Vector2(6, 3), "vision_at": Vector2(0, -3), "big": true, "vary": TREE_VARY},
+	{"name": "dead_pine", "foot": 4, "solid": {"ellipse": Vector2(11, 5), "at": Vector2(-1, -7)}, "vision": Vector2(11, 5), "vision_at": Vector2(-1, -7), "big": true, "vary": DEAD_VARY},
+	{"name": "dead_tree", "foot": 4, "solid": {"ellipse": Vector2(9, 5), "at": Vector2(2, -6)}, "vision": Vector2(9, 5), "vision_at": Vector2(2, -6), "big": true, "vary": DEAD_VARY},
+	{"name": "stump", "foot": 3, "solid": {"ellipse": Vector2(11, 5), "at": Vector2(0, -7)}, "vision": Vector2.ZERO, "big": true},
 	{"name": "log", "foot": 4, "solid": {"capsule": Vector2(6, 52)}, "vision": Vector2.ZERO, "big": true},
-	{"name": "boulder", "foot": 3, "solid": {"ellipse": Vector2(17, 7)}, "vision": Vector2(15, 6), "big": true},
-	{"name": "mossy_rock", "foot": 2, "solid": {"ellipse": Vector2(10, 4)}, "vision": Vector2.ZERO, "big": true},
+	{"name": "boulder", "foot": 3, "solid": {"ellipse": Vector2(17, 6), "at": Vector2(0, -5)}, "vision": Vector2(15, 5), "vision_at": Vector2(0, -5), "big": true},
+	{"name": "mossy_rock", "foot": 2, "solid": {"ellipse": Vector2(10, 4), "at": Vector2(0, -4)}, "vision": Vector2.ZERO, "big": true},
 	{"name": "fern_a", "foot": 2, "solid": {}, "vision": Vector2.ZERO, "big": false, "vary": {"sway": 0.6, "bend": 1.0}},
 	{"name": "fern_b", "foot": 2, "solid": {}, "vision": Vector2.ZERO, "big": false, "vary": {"sway": 0.6, "bend": 1.0}},
 	{"name": "grass_tuft", "foot": 1, "solid": {}, "vision": Vector2.ZERO, "big": false, "vary": {"sway": 0.8, "bend": 1.3}},
@@ -160,6 +162,7 @@ func _make_prop(p: Dictionary, material: Material) -> PackedScene:
 		var occ := LightOccluder2D.new()
 		occ.name = "VisionBlocker"
 		occ.occluder = op
+		occ.position = p.get("vision_at", Vector2.ZERO)
 		_add(root, root, occ)
 
 	var packed := PackedScene.new()

@@ -48,6 +48,7 @@ void fragment() {
 # Trees: trunk core + canopy shade around it. Main's Trunk Shade / Canopy Shade
 # / Prop Shade scale these.
 const PROP_MATERIAL := preload("res://assets/props/varied_material.tres")
+const CHARACTER_MATERIAL := preload("res://assets/characters/character_material.tres")
 
 const ABSORB := {
 	"pine_tall.png": [13.0, 0.9, 42.0, 0.06],
@@ -64,6 +65,13 @@ const ABSORB := {
 	"fallen_tree.png": [44.0, 0.25, 0.0, 0.0],
 }
 const TREES := ["pine_tall.png", "pine_dark.png", "dead_pine.png", "dead_tree.png"]
+# Where the trunk/rock actually meets the ground, in ART px from the foot point
+# (same offsets as the collision in tools/build_world.gd).
+const BASE_AT := {
+	"pine_tall.png": Vector2(0, -6), "pine_dark.png": Vector2(0, -3),
+	"dead_pine.png": Vector2(-1, -7), "dead_tree.png": Vector2(2, -6),
+	"stump.png": Vector2(0, -7), "boulder.png": Vector2(0, -5), "mossy_rock.png": Vector2(0, -4),
+}
 
 # Settings (main.gd sets these)
 var vision_radius := 380.0
@@ -76,6 +84,8 @@ var cell := 16
 var trunk_absorption := 1.0      # x trunk absorption
 var canopy_absorption := 1.0     # x canopy absorption
 var prop_absorption := 1.0       # x bushes, rocks, logs
+var side_shade := 0.55          # props: far side from your light darkens
+var back_shade := 0.3           # props: darker when you stand behind them
 var smoothness := 2               # cell blending: texture enlarged this many times with smooth filtering
 
 var player: Node2D
@@ -99,6 +109,7 @@ func _param(name: String, value) -> void:
 	if name in ["player_light", "static_light", "player_origin", "player_size",
 			"static_origin", "static_size", "static_strength", "dark_color", "darkness"]:
 		PROP_MATERIAL.set_shader_parameter("dk_" + name, value)
+		CHARACTER_MATERIAL.set_shader_parameter("dk_" + name, value)
 
 
 func _ready() -> void:
@@ -134,7 +145,9 @@ func build(props: Node, area: Rect2) -> void:
 			continue
 		var sc: float = prop.scale.x
 		var tree := key in TREES
-		var p: Vector2 = prop.global_position
+		var at: Vector2 = BASE_AT.get(key, Vector2.ZERO)
+		var sprite_flipped: bool = sprite.flip_h
+		var p: Vector2 = prop.global_position + Vector2(-at.x if sprite_flipped else at.x, at.y) * sc
 		if spec[3] > 0.0:
 			_stamp(p, spec[2] * sc, spec[3] * (canopy_absorption if tree else prop_absorption))
 		_stamp(p, spec[0] * sc, spec[1] * (trunk_absorption if tree else prop_absorption))
@@ -345,10 +358,13 @@ func apply(rebuild: bool = false) -> void:
 		return
 	_param("dark_color", Vector3(dark_color.r, dark_color.g, dark_color.b))
 	_param("darkness", darkness if visible else 0.0)
-	PROP_MATERIAL.set_shader_parameter("dk_radius", vision_radius)
-	PROP_MATERIAL.set_shader_parameter("dk_squash", squash)
-	PROP_MATERIAL.set_shader_parameter("dk_start", start)
-	PROP_MATERIAL.set_shader_parameter("dk_density", density)
+	for m in [PROP_MATERIAL, CHARACTER_MATERIAL]:
+		m.set_shader_parameter("dk_radius", vision_radius)
+		m.set_shader_parameter("dk_squash", squash)
+		m.set_shader_parameter("dk_start", start)
+		m.set_shader_parameter("dk_density", density)
+		m.set_shader_parameter("dk_side_shade", side_shade)
+		m.set_shader_parameter("dk_back_shade", back_shade)
 	_last_cell = Vector2i(-99999, -99999)       # recalculate the player's light
 	_ray_cache.clear()
 	if rebuild and not _absorb.is_empty():

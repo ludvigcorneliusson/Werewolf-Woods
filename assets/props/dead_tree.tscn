@@ -4,13 +4,10 @@
 [ext_resource type="Material" path="res://assets/props/varied_material.tres" id="2_v0ld0"]
 [ext_resource type="Texture2D" path="res://assets/props/dead_tree.png" id="3_d1b6k"]
 
-[sub_resource type="CircleShape2D" id="CircleShape2D_cd3fi"]
-radius = 7.0
+[sub_resource type="OccluderPolygon2D" id="OccluderPolygon2D_cd3fi"]
+polygon = PackedVector2Array(9, 0, 7.7942286, 2.5, 4.5, 4.3301272, 5.5109107e-16, 5, -4.5, 4.3301272, -7.7942286, 2.5, -9, 6.123234e-16, -7.7942286, -2.5, -4.5, -4.3301272, -1.6532732e-15, -5, 4.5, -4.3301272, 7.7942286, -2.5)
 
-[sub_resource type="OccluderPolygon2D" id="OccluderPolygon2D_p8l4o"]
-polygon = PackedVector2Array(10, 0, 8.6602545, 3, 5, 5.196152, 6.123234e-16, 6, -5, 5.196152, -8.6602545, 3, -10, 7.3478806e-16, -8.6602545, -3, -5, -5.196152, -1.83697e-15, -6, 5, -5.196152, 8.6602545, -3)
-
-[node name="DeadTree" type="Node2D" unique_id=1641942319]
+[node name="DeadTree" type="Node2D" unique_id=2036121342]
 script = ExtResource("1_ejcxk")
 min_scale = 2.0
 max_scale = 2.6
@@ -19,17 +16,19 @@ saturation_variance = 0.15
 brightness_variance = 0.12
 sway = 0.35
 
-[node name="Sprite" type="Sprite2D" parent="." unique_id=293309015]
+[node name="Sprite" type="Sprite2D" parent="." unique_id=1700034805]
 light_mask = 2
 material = ExtResource("2_v0ld0")
 texture = ExtResource("3_d1b6k")
 centered = false
 offset = Vector2(-34, -171)
 
-[node name="Body" type="StaticBody2D" parent="." unique_id=1347828862]
+[node name="Body" type="StaticBody2D" parent="." unique_id=1100927709]
 
-[node name="@CollisionShape2D@5" type="CollisionShape2D" parent="Body" unique_id=1453251946]
-shape = SubResource("CircleShape2D_cd3fi")
+[node name="@CollisionPolygon2D@5" type="CollisionPolygon2D" parent="Body" unique_id=840525982]
+position = Vector2(2, -6)
+polygon = PackedVector2Array(9, 0, 7.7942286, 2.5, 4.5, 4.3301272, 5.5109107e-16, 5, -4.5, 4.3301272, -7.7942286, 2.5, -9, 6.123234e-16, -7.7942286, -2.5, -4.5, -4.3301272, -1.6532732e-15, -5, 4.5, -4.3301272, 7.7942286, -2.5)
 
-[node name="VisionBlocker" type="LightOccluder2D" parent="." unique_id=3591012]
-occluder = SubResource("OccluderPolygon2D_p8l4o")
+[node name="VisionBlocker" type="LightOccluder2D" parent="." unique_id=1879971741]
+position = Vector2(2, -6)
+occluder = SubResource("OccluderPolygon2D_cd3fi")

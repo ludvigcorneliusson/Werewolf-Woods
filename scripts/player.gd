@@ -32,7 +32,24 @@ const RUN := {
 ## its own value. Left, up-left and down-left mirror right, up_right, down_right
 ## (and share their cycle).
 
+## The character you control has the camera and the light; others (an AI
+## werewolf) are darkened by the night like the props.
+var is_local := true
+## AI control instead of the keyboard (set ai_dir / ai_sprint each frame).
+var ai_controlled := false
+var ai_dir := Vector2.ZERO
+var ai_sprint := false
+var walk_speed := WALK_SPEED
+var sprint_speed := SPRINT_SPEED
+var body_radius := 6.0
+var shadow_radius := 9.0
+## Half-size of the see-through area in props when you stand behind them
+## (hugs the body; centred on the body, not the feet).
+var see_through_size := Vector2(11, 23)
+
 var facing := Vector2.DOWN
+var god_mode := false            # set by main.gd: walk through everything, much faster
+var god_speed := 4.0             # speed multiplier in god mode
 var light: PointLight2D
 var camera: Camera2D
 var sprite: AnimatedSprite2D
@@ -56,7 +73,7 @@ func _ready() -> void:
 	motion_mode = CharacterBody2D.MOTION_MODE_FLOATING
 
 	var shape := CircleShape2D.new()
-	shape.radius = 6.0
+	shape.radius = body_radius
 	var cs := CollisionShape2D.new()
 	cs.shape = shape
 	add_child(cs)
@@ -66,10 +83,14 @@ func _ready() -> void:
 	sprite.sprite_frames = _build_frames()
 	_idle_mat = ShaderMaterial.new()
 	_idle_mat.shader = preload("res://assets/characters/idle_breathe.gdshader")
-	sprite.material = _idle_mat
+	# Local: breathing idle. Others: darkened by the night like props.
+	sprite.material = _idle_mat if is_local else preload("res://assets/characters/character_material.tres")
 	sprite.light_mask = 4          # characters: lit only by vision and fires
 	add_child(sprite)
 	_play("idle_down")
+
+	if not is_local:
+		return
 
 	# Vision: a light that casts shadows behind trunks and bushes. Ground and
 	# characters in shadow stay dark (line-of-sight fog of war). Props are lit
@@ -87,32 +108,41 @@ func _ready() -> void:
 
 	camera = Camera2D.new()
 	camera.position = Vector2(0, -20)   # center on the body, not the feet (offset would ignore camera limits)
+	# Smooth follow. Movement runs in fixed physics steps; physics interpolation
+	# (project setting) smooths it between steps, so the camera never stutters.
 	camera.position_smoothing_enabled = true
-	camera.position_smoothing_speed = 8.0
+	camera.position_smoothing_speed = 5.0
+	camera.process_callback = Camera2D.CAMERA2D_PROCESS_IDLE
 	add_child(camera)
 	camera.make_current()
 
 
-func _physics_process(delta: float) -> void:
-	var dir := Input.get_vector("move_left", "move_right", "move_up", "move_down")
-	_moving = dir != Vector2.ZERO
+func _physics_process(_delta: float) -> void:
+	var dir := ai_dir.limit_length(1.0) if ai_controlled else Input.get_vector("move_left", "move_right", "move_up", "move_down")
+	_moving = dir.length() > 0.05
 
-	var sprinting := Input.is_action_pressed("sprint") and _moving   # no stamina: sprint forever
+	var sprint_on := ai_sprint if ai_controlled else Input.is_action_pressed("sprint")
+	var sprinting := sprint_on and _moving   # no stamina: sprint forever
 
-	var speed := SPRINT_SPEED if sprinting else WALK_SPEED
+	var speed := sprint_speed if sprinting else walk_speed
 	velocity = Vector2(dir.x, dir.y * DEPTH_SQUASH) * speed
-	move_and_slide()
+	if god_mode:
+		global_position += velocity * god_speed * _delta     # no collisions
+	else:
+		move_and_slide()
 
 	_speed = speed
 	if _moving:
 		facing = dir
 	_update_sprite()
-	_update_idle(delta)
+	_update_idle(_delta)
 	queue_redraw()
 
 
 ## Fades the breathing in after he stops and out as soon as he moves.
 func _update_idle(delta: float) -> void:
+	if sprite.material != _idle_mat:
+		return
 	var target := 1.0 if idle_enabled and not _moving else 0.0
 	_idle = move_toward(_idle, target, delta * (1.5 if target > _idle else 8.0))
 	_idle_mat.set_shader_parameter("active", _idle)
@@ -130,7 +160,7 @@ func _update_sprite() -> void:
 	sprite.flip_h = sector >= 3 and sector <= 5     # left side mirrors the right
 	if _moving:
 		_play("run_" + view)
-		sprite.speed_scale = _speed / WALK_SPEED
+		sprite.speed_scale = _speed / walk_speed
 	else:
 		_play("idle_" + view)
 		sprite.speed_scale = 1.0
@@ -186,5 +216,5 @@ func _build_frames() -> SpriteFrames:
 func _draw() -> void:
 	# Soft ground shadow under the feet.
 	draw_set_transform(Vector2(0, 0), 0.0, Vector2(1.0, 0.4))
-	draw_circle(Vector2.ZERO, 9.0, Color(0, 0, 0, 0.3))
+	draw_circle(Vector2.ZERO, shadow_radius, Color(0, 0, 0, 0.3))
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)

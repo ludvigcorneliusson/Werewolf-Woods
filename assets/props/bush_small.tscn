@@ -8,17 +8,17 @@
 cull_mode = 1
 polygon = PackedVector2Array(13, 0, 11.25833, 2.5, 6.5, 4.3301272, 7.9602044e-16, 5, -6.5, 4.3301272, -11.25833, 2.5, -13, 6.123234e-16, -11.25833, -2.5, -6.5, -4.3301272, -2.3880612e-15, -5, 6.5, -4.3301272, 11.25833, -2.5)
 
-[node name="BushSmall" type="Node2D" unique_id=65787419]
+[node name="BushSmall" type="Node2D" unique_id=1768429540]
 script = ExtResource("1_6ie77")
 sway = 0.35
 bend = 0.6
 
-[node name="Sprite" type="Sprite2D" parent="." unique_id=1178497239]
+[node name="Sprite" type="Sprite2D" parent="." unique_id=451876146]
 light_mask = 2
 material = ExtResource("2_qov3o")
 texture = ExtResource("3_wjlox")
 centered = false
 offset = Vector2(-24, -32)
 
-[node name="VisionBlocker" type="LightOccluder2D" parent="." unique_id=136918496]
+[node name="VisionBlocker" type="LightOccluder2D" parent="." unique_id=666059747]
 occluder = SubResource("OccluderPolygon2D_ovqnw")

@@ -13,7 +13,9 @@ shader_type canvas_item;
 //   a = 0.5 + sway / 2   (sway 0..1 = how much wind bends this prop; never 0 so Godot keeps drawing it)
 
 uniform vec2 player_pos = vec2(-99999.0);
-uniform float fade_radius = 30.0;
+uniform float fade_radius = 30.0;       // (old round fade; unused)
+uniform vec2 fade_size = vec2(11.0, 23.0);   // half-size of the see-through area around your body (world px)
+uniform float fade_softness = 5.0;      // soft edge (world px)
 uniform float faded_alpha = 0.35;
 uniform bool color_variance = false;
 
@@ -40,9 +42,12 @@ uniform float dk_radius = 380.0;          // the player's light, for proximity l
 uniform float dk_squash = 0.78;
 uniform float dk_start = 0.3;
 uniform float dk_density = 1.5;
+uniform float dk_side_shade = 0.55;       // how dark the side of a prop facing away from your light gets
+uniform float dk_back_shade = 0.3;        // extra darkness when you stand behind the prop (lit from the back)
 
 varying vec2 world_pos;
 varying float base_lit;
+varying float half_w;
 varying float base_y;
 varying vec2 base_pos;
 varying vec4 variance;
@@ -77,6 +82,7 @@ void vertex() {
 		VERTEX.x += px / max(length(MODEL_MATRIX[0].xy), 0.001);
 	}
 	world_pos = (MODEL_MATRIX * vec4(VERTEX, 0.0, 1.0)).xy;
+	half_w = max(abs((MODEL_MATRIX * vec4(VERTEX, 0.0, 1.0)).x - base_pos.x), 1.0);
 }
 
 vec3 rgb2hsv(vec3 c) {
@@ -105,10 +111,25 @@ void fragment() {
 	} else {
 		COLOR = tex * variance;
 	}
-	// Distance to the player's body (a bit above the feet), squashed for the 3/4 view.
-	vec2 d = (world_pos - (player_pos + vec2(0.0, -20.0))) * vec2(1.0, 0.75);
-	float near = 1.0 - smoothstep(fade_radius * 0.6, fade_radius, length(d));
+	// See-through area hugging your body: a soft ellipse around the body
+	// (centred fade_size.y above the feet), so only the part over you fades.
+	vec2 d = (world_pos - (player_pos - vec2(0.0, fade_size.y))) / max(fade_size, vec2(1.0));
+	float e = length(d);                                       // 1 = edge of the body area
+	float soft = fade_softness / max(min(fade_size.x, fade_size.y), 1.0);
+	float near = 1.0 - smoothstep(1.0, 1.0 + soft, e);
 	float behind = step(player_pos.y, base_y);   // player is above (= behind) the prop's foot
 	COLOR.a *= mix(1.0, faded_alpha, near * behind);
+	// Directional shading from your light: the side facing away from you darkens,
+	// and the whole face darkens a bit when you stand behind the prop.
+	if (dk_darkness > 0.0) {
+		vec2 eye = player_pos - vec2(0.0, 16.0);
+		vec2 to_p = (eye - base_pos) * vec2(1.0, 1.0 / dk_squash);
+		vec2 dir = to_p / (length(to_p) + 0.001);
+		float side = clamp((world_pos.x - base_pos.x) / half_w, -1.0, 1.0);   // -1 left edge, 1 right edge
+		float away = smoothstep(0.15, -0.9, side * dir.x) * abs(dir.x);         // 0 facing you .. 1 far side
+		float behind = smoothstep(0.0, -0.9, dir.y);                             // you are north of it
+		float shade = clamp(dk_side_shade * away + dk_back_shade * behind, 0.0, 0.9);
+		COLOR.rgb *= 1.0 - shade * dk_darkness;
+	}
 	COLOR.rgb = mix(COLOR.rgb, dk_dark_color, dk_darkness * (1.0 - base_lit));
 }

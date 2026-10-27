@@ -5,6 +5,9 @@ extends Node2D
 const MapGenerator := preload("res://scripts/map_generator.gd")
 const Player := preload("res://scripts/player.gd")
 const Darkness := preload("res://scripts/darkness.gd")
+const StartMenu := preload("res://scripts/start_menu.gd")
+const Werewolf := preload("res://scripts/werewolf.gd")
+const CHARACTER_MATERIAL := preload("res://assets/characters/character_material.tres")
 const PlantPush := preload("res://scripts/plant_push.gd")
 ## Shared by every prop scene; we feed it the player position so trees fade
 ## when the player walks behind them.
@@ -15,6 +18,10 @@ const VARIED_MATERIAL := preload("res://assets/props/varied_material.tres")
 ## false = use the hand-painted World node in main.tscn (default).
 ## true  = use the old procedural generator (R makes a new random map).
 @export var use_generated_map := false
+## Show the start menu (Start -> Human/Werewolf) when the game launches.
+@export var show_start_menu := true
+## The side the player chose in the start menu ("human" for now).
+var player_role := "human"
 
 # --- Camera -------------------------------------------------------------------
 @export_group("Camera")
@@ -26,7 +33,47 @@ const VARIED_MATERIAL := preload("res://assets/props/varied_material.tres")
 		if player and player.camera:
 			player.camera.zoom = Vector2(v, v)
 ## Allow zooming with the mouse wheel (handy for testing; off for normal play).
+## God mode (F) always allows it.
 @export var scroll_zoom := false
+
+# --- See-through ----------------------------------------------------------------
+# When you stand behind a tree/prop, the part of it covering you turns see-through.
+@export_group("See-through")
+## Size of the see-through area x your character's body size. 1 = hugs the body.
+@export_range(0.5, 4.0, 0.05) var see_through_scale := 1.0
+## Soft edge of the see-through area (world px).
+@export_range(0.0, 30.0, 0.5, "suffix:px") var see_through_softness := 5.0
+## How transparent the covering part gets (0 = invisible, 1 = not see-through).
+@export_range(0.0, 1.0, 0.01) var see_through_alpha := 0.35
+@export_group("")
+
+# --- Werewolf -----------------------------------------------------------------
+@export_group("Werewolf")
+## When you play the human: an AI werewolf hunts you.
+@export var ai_werewolf := true
+## Seconds before the AI werewolf appears (time to run and hide).
+@export_range(0.0, 300.0, 1.0, "suffix:s") var werewolf_delay := 20.0
+## It spawns at least this far from you.
+@export_range(200.0, 5000.0, 10.0, "suffix:px") var werewolf_spawn_distance := 1400.0
+## Distance at which it notices you and starts chasing.
+@export_range(50.0, 1500.0, 5.0, "suffix:px") var werewolf_sense := 320.0
+## Distance at which it loses you.
+@export_range(100.0, 3000.0, 10.0, "suffix:px") var werewolf_lose := 560.0
+## Werewolf speeds (the human walks 120, sprints 200).
+@export_range(20.0, 600.0, 5.0) var werewolf_walk_speed := 140.0
+@export_range(20.0, 800.0, 5.0) var werewolf_sprint_speed := 215.0
+@export_group("")
+
+var werewolf: CharacterBody2D
+var _round_label: Label
+
+# --- God mode -----------------------------------------------------------------
+# F toggles god mode: no fog, mouse-wheel zoom, walk through everything, fast.
+@export_group("God Mode")
+## Movement speed multiplier in god mode (Shift still sprints on top).
+@export_range(1.0, 20.0, 0.5) var god_speed := 4.0
+## Let the camera leave the map edges in god mode.
+@export var god_free_camera := true
 @export_group("")
 
 # --- Fog of war ---------------------------------------------------------------
@@ -98,6 +145,16 @@ const VARIED_MATERIAL := preload("res://assets/props/varied_material.tres")
 	set(v):
 		prop_shade = v
 		_rebuild_darkness()
+## How dark the side of a tree/prop facing away from your light gets. 0 = off.
+@export_range(0.0, 0.9, 0.01) var prop_side_shade := 0.55:
+	set(v):
+		prop_side_shade = v
+		_apply_fog()
+## How much darker a tree/prop looks when you stand behind it (lit from the back). 0 = off.
+@export_range(0.0, 0.9, 0.01) var prop_back_shade := 0.3:
+	set(v):
+		prop_back_shade = v
+		_apply_fog()
 ## How much the square cells are blended. 1 = visible squares, 2-4 = soft.
 @export_range(1, 4, 1) var cell_softness := 2:
 	set(v):
@@ -208,6 +265,10 @@ var _dark: Node2D             # the organic darkness overlay
 var seed_value := 0
 
 var _hud_label: Label
+var _god_label: Label
+var god_mode := false
+var _saved_fog := true
+var _saved_limits := []
 var _plant_push: Node
 
 
@@ -237,6 +298,11 @@ func _ready() -> void:
 	_apply_wind()
 	_apply_idle()
 	_rebuild_darkness.call_deferred()
+	if show_start_menu:
+		var menu := StartMenu.new()
+		add_child(menu)
+		menu.chosen.connect(_on_role_chosen)
+		get_tree().paused = true                # the forest shows behind the menu, frozen
 	_plant_push = PlantPush.new()
 	_plant_push.player = player
 	_plant_push.props = world.get_node_or_null("Props") if is_instance_valid(world) else null
@@ -251,6 +317,10 @@ func _process(_delta: float) -> void:
 	else:
 		PROP_MATERIAL.set_shader_parameter("player_pos", player.global_position)
 		VARIED_MATERIAL.set_shader_parameter("player_pos", player.global_position)
+		VARIED_MATERIAL.set_shader_parameter("fade_size", player.see_through_size * see_through_scale)
+		VARIED_MATERIAL.set_shader_parameter("fade_softness", see_through_softness)
+		VARIED_MATERIAL.set_shader_parameter("faded_alpha", see_through_alpha)
+		CHARACTER_MATERIAL.set_shader_parameter("player_pos", player.global_position)
 
 
 ## Pushes the Wind settings to the shared prop shader.
@@ -304,6 +374,8 @@ func _apply_fog() -> void:
 	_dark.canopy_absorption = canopy_shade
 	_dark.prop_absorption = prop_shade
 	_dark.smoothness = cell_softness
+	_dark.side_shade = prop_side_shade
+	_dark.back_shade = prop_back_shade
 	_dark.apply(true)
 
 
@@ -330,17 +402,138 @@ func _map_rect() -> Rect2:
 func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("regenerate") and map:
 		_new_map(randi())
-	elif event.is_action_pressed("toggle_fog"):
-		fog_enabled = not fog_enabled
+	elif event.is_action_pressed("god_mode"):
+		_set_god_mode(not god_mode)
 	elif event.is_action_pressed("toggle_fullscreen"):
 		var w := get_window()
 		w.mode = Window.MODE_WINDOWED if w.mode in [Window.MODE_FULLSCREEN, Window.MODE_EXCLUSIVE_FULLSCREEN] else Window.MODE_FULLSCREEN
-	elif scroll_zoom and event is InputEventMouseButton and event.pressed:
+	elif (scroll_zoom or god_mode) and event is InputEventMouseButton and event.pressed:
 		var cam: Camera2D = player.camera
 		if event.button_index == MOUSE_BUTTON_WHEEL_UP:
 			cam.zoom = (cam.zoom * 1.15).clamp(Vector2(0.12, 0.12), Vector2(6, 6))
 		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
 			cam.zoom = (cam.zoom / 1.15).clamp(Vector2(0.12, 0.12), Vector2(6, 6))
+
+
+## God mode: no fog, mouse-wheel zoom, no collisions, fast movement, free camera.
+## Turning it off restores fog, camera zoom and limits.
+func _on_role_chosen(role: String) -> void:
+	player_role = role
+	if role == "werewolf":
+		_become_werewolf()
+	elif ai_werewolf:
+		get_tree().create_timer(werewolf_delay, false).timeout.connect(_spawn_ai_werewolf)
+	get_tree().paused = false
+
+
+## Play as the werewolf: swap the settler for a werewolf you control.
+func _become_werewolf() -> void:
+	var old := player
+	var wolf := Werewolf.new()
+	wolf.walk_speed = werewolf_walk_speed
+	wolf.sprint_speed = werewolf_sprint_speed
+	world.add_child(wolf)
+	wolf.global_position = old.global_position
+	wolf.reset_physics_interpolation()
+	var cam: Camera2D = old.camera
+	wolf.camera.zoom = cam.zoom
+	wolf.camera.limit_left = cam.limit_left
+	wolf.camera.limit_top = cam.limit_top
+	wolf.camera.limit_right = cam.limit_right
+	wolf.camera.limit_bottom = cam.limit_bottom
+	wolf.camera.make_current()
+	wolf.camera.reset_smoothing()
+	old.queue_free()
+	player = wolf
+	_dark.player = wolf
+	_dark.camera = wolf.camera
+	_dark.apply()
+	if _plant_push:
+		_plant_push.player = wolf
+	_apply_fog()
+	_apply_idle()
+
+
+## AI werewolf when you play the human: appears far away and hunts you.
+func _spawn_ai_werewolf() -> void:
+	if is_instance_valid(werewolf) or player_role != "human":
+		return
+	var rect := _map_rect()
+	var rng := RandomNumberGenerator.new()
+	rng.randomize()
+	var pos := Vector2.ZERO
+	for i in 60:
+		pos = Vector2(rng.randf_range(rect.position.x + 150, rect.end.x - 150), rng.randf_range(rect.position.y + 150, rect.end.y - 150))
+		if pos.distance_to(player.global_position) >= werewolf_spawn_distance:
+			break
+	var wolf := Werewolf.new()
+	wolf.is_local = false
+	wolf.ai_controlled = true
+	wolf.walk_speed = werewolf_walk_speed
+	wolf.sprint_speed = werewolf_sprint_speed
+	wolf.target = player
+	wolf.map_rect = rect
+	wolf.sense_radius = werewolf_sense
+	wolf.lose_radius = werewolf_lose
+	world.add_child(wolf)
+	wolf.global_position = pos
+	wolf.reset_physics_interpolation()
+	wolf.caught.connect(_on_caught)
+	werewolf = wolf
+	_flash("The werewolf is awake...", 3.0)
+
+
+func _on_caught(_who: Node2D) -> void:
+	_flash("You were caught!", 0.0)
+	player.set_physics_process(false)
+	get_tree().create_timer(3.0).timeout.connect(func(): get_tree().reload_current_scene())
+
+
+## Big centred message (seconds = 0: stays).
+func _flash(text: String, seconds: float) -> void:
+	if _round_label == null:
+		var layer := CanvasLayer.new()
+		layer.layer = 3
+		add_child(layer)
+		_round_label = Label.new()
+		_round_label.set_anchors_preset(Control.PRESET_CENTER_TOP)
+		_round_label.position = Vector2(-400, 120)
+		_round_label.size = Vector2(800, 60)
+		_round_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		_round_label.add_theme_font_size_override("font_size", 36)
+		_round_label.add_theme_color_override("font_color", Color(0.95, 0.85, 0.7))
+		_round_label.add_theme_color_override("font_outline_color", Color.BLACK)
+		_round_label.add_theme_constant_override("outline_size", 6)
+		layer.add_child(_round_label)
+	_round_label.text = text
+	_round_label.visible = true
+	if seconds > 0.0:
+		get_tree().create_timer(seconds).timeout.connect(func(): if _round_label.text == text: _round_label.visible = false)
+
+
+func _set_god_mode(on: bool) -> void:
+	if on == god_mode:
+		return
+	god_mode = on
+	var cam: Camera2D = player.camera
+	if on:
+		_saved_fog = fog_enabled
+		fog_enabled = false
+		_saved_limits = [cam.limit_left, cam.limit_top, cam.limit_right, cam.limit_bottom]
+		if god_free_camera:
+			cam.limit_left = -10000000; cam.limit_top = -10000000
+			cam.limit_right = 10000000; cam.limit_bottom = 10000000
+	else:
+		fog_enabled = _saved_fog
+		cam.zoom = Vector2(camera_zoom, camera_zoom)
+		if _saved_limits.size() == 4:
+			cam.limit_left = _saved_limits[0]; cam.limit_top = _saved_limits[1]
+			cam.limit_right = _saved_limits[2]; cam.limit_bottom = _saved_limits[3]
+		cam.reset_smoothing()
+	player.god_mode = on
+	player.god_speed = god_speed
+	if _god_label:
+		_god_label.visible = on
 
 
 func _new_map(new_seed: int) -> void:
@@ -363,7 +556,7 @@ func _new_map(new_seed: int) -> void:
 	cam.limit_bottom = int(map.map_size.y)
 	cam.reset_smoothing()
 
-	_hud_label.text = "Seed %d   |   WASD move · Shift sprint · R new map · F toggle fog · Mouse wheel zoom" % seed_value
+	_hud_label.text = "Seed %d   |   WASD move · Shift sprint · R new map · F god mode · Mouse wheel zoom" % seed_value
 
 
 func _setup_painted_world() -> void:
@@ -372,10 +565,11 @@ func _setup_painted_world() -> void:
 	player.reparent(world)
 	var spawn := world.get_node_or_null("Spawn")
 	player.global_position = spawn.global_position if spawn else Vector2.ZERO
+	player.reset_physics_interpolation()
 	player.camera.zoom = Vector2(camera_zoom, camera_zoom)   # Camera settings on Main
 	_add_world_borders()
 	player.camera.reset_smoothing()
-	_hud_label.text = "WASD move · Shift sprint · F toggle fog · F11 fullscreen" + (" · Mouse wheel zoom" if scroll_zoom else "")
+	_hud_label.text = "WASD move · Shift sprint · F god mode · F11 fullscreen" + (" · Mouse wheel zoom" if scroll_zoom else "")
 
 
 func _add_world_borders() -> void:
@@ -421,6 +615,15 @@ func _build_hud() -> void:
 	_hud_label.add_theme_constant_override("outline_size", 4)
 	hud.add_child(_hud_label)
 
+	_god_label = Label.new()
+	_god_label.text = "GOD MODE  ·  no fog · walk through anything · fast · mouse wheel zoom  ·  F to exit"
+	_god_label.position = Vector2(16, 40)
+	_god_label.add_theme_color_override("font_color", Color(1.0, 0.85, 0.3))
+	_god_label.add_theme_color_override("font_outline_color", Color.BLACK)
+	_god_label.add_theme_constant_override("outline_size", 4)
+	_god_label.visible = false
+	hud.add_child(_god_label)
+
 
 func _setup_input() -> void:
 	var bindings := {
@@ -430,7 +633,7 @@ func _setup_input() -> void:
 		"move_right": [KEY_D, KEY_RIGHT],
 		"sprint": [KEY_SHIFT],
 		"regenerate": [KEY_R],
-		"toggle_fog": [KEY_F],
+		"god_mode": [KEY_F],
 		"toggle_fullscreen": [KEY_F11],
 	}
 	for action in bindings:
