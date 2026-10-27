@@ -47,7 +47,8 @@ Don't Starve-style 3/4 camera. All art is drawn in code (no image assets yet).
 - `assets/characters/` — settler_up/down/right.png (idle), settler_run_up/down/right.png (horizontal run strips; frame sizes/offsets in player.gd `RUN`).
 - `assets/props/` — prop PNGs + one .tscn per prop, props_tileset.tres, prop_material.tres + pine_material.tres + prop_fade.gdshader (shared fade, pine colour variance), campfire.png/.tscn.
 - `assets/tiles/` — grass.png + ground_tileset.tres.
-- `tools/build_world.gd` — rebuilds prop scenes, tilesets and the World (OVERWRITES painted World). Prop collision/vision sizes are in its PROPS table; forest density in TREE_SPACING / TREE_JITTER / FOREST_FILL / CLEARING.
+- `tools/world_builder.gd` — WorldBuilder node in main.tscn: set map size (ground_tiles), seed, clearing and forest density in the Inspector, click **Rebuild World**, save. Replaces the World node.
+- `tools/build_world.gd` — rebuilds prop scenes, tilesets and the World (OVERWRITES painted World). Prop collision/vision sizes are in its PROPS table; World settings come from the WorldBuilder node.
 - `tools/build_campfire.gd` — makes campfire.tscn once (OVERWRITES particle tweaks if re-run).
 - `scripts/main.gd` — entry point: fog settings + darkness, player, world setup, borders, HUD, input.
 - `scripts/player.gd` — settler movement, sprite direction, vision light, camera. Tunables: `WALK_SPEED`, `SPRINT_SPEED`, `RUN[...].cycle` (per-direction run speed).

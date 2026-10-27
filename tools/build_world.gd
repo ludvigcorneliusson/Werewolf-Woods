@@ -5,9 +5,12 @@ extends SceneTree
 ##   - assets/props/*.tscn      one scene per prop (sprite, collision, vision blocker, fade)
 ##   - assets/props/props_tileset.tres   scene tiles, so props can be painted with the TileMap brush
 ##   - assets/tiles/ground_tileset.tres  the grass tile
-##   - the World node in main.tscn with ground filled, a pine forest and the campfire
+##   - the World node in main.tscn, using the settings on the WorldBuilder node
 ## (campfire.tscn itself is made once by tools/build_campfire.gd.)
 ## Re-running it OVERWRITES the World in main.tscn (and anything you painted there).
+##
+## To only change the map size / forest: no need for this - select WorldBuilder
+## in main.tscn and click "Rebuild World" in the Inspector.
 
 const PROPS := [
 	# name,        foot_from_bottom, collision radius, vision blocker (rx, ry) or zero
@@ -18,15 +21,7 @@ const PROPS := [
 	["stump",      4, 9.0, Vector2.ZERO],
 	["rock",       4, 9.0, Vector2.ZERO],
 ]
-const GROUND_TILES := 30      # tiles per side
 const PROP_CELL := 16         # grid used when painting props
-const CLEARING := 380.0       # px radius of the open area around the campfire
-# Pine forest. Pines are ~300-430 px tall (see scripts/pine.gd), settler 43 px.
-const TREE_SPACING := 92.0    # px between candidate tree spots (lower = denser)
-const TREE_JITTER := 34.0     # px random offset per spot (breaks up the grid)
-const FOREST_FILL := 0.72     # 0..1 chance a spot gets a tree where the forest is thickest
-const SPAWN_OFFSET := Vector2(0, 70)   # settler starts just south of the fire
-
 
 func _initialize() -> void:
 	var material := ShaderMaterial.new()
@@ -53,10 +48,9 @@ func _initialize() -> void:
 	var pts := TileSet.new()
 	pts.tile_size = Vector2i(PROP_CELL, PROP_CELL)
 	var coll := TileSetScenesCollectionSource.new()
-	var props_source := pts.add_source(coll)
-	var scene_ids := []
+	pts.add_source(coll)
 	for path in scene_paths:
-		scene_ids.append(coll.create_scene_tile(load(path)))
+		coll.create_scene_tile(load(path))
 	ResourceSaver.save(pts, "res://assets/props/props_tileset.tres")
 	pts = load("res://assets/props/props_tileset.tres")
 
@@ -68,48 +62,21 @@ func _initialize() -> void:
 	atlas.texture = tex
 	atlas.texture_region_size = gts.tile_size
 	atlas.create_tile(Vector2i.ZERO)
-	var ground_source := gts.add_source(atlas)
+	gts.add_source(atlas)
 	ResourceSaver.save(gts, "res://assets/tiles/ground_tileset.tres")
 	gts = load("res://assets/tiles/ground_tileset.tres")
 
 	# --- world in main.tscn -----------------------------------------------
 	var main: Node = (load("res://main.tscn") as PackedScene).instantiate()
-	var old := main.get_node_or_null("World")
-	if old:
-		main.remove_child(old)
-		old.free()
-
-	var world := Node2D.new()
-	world.name = "World"
-	world.y_sort_enabled = true
-	_add(main, main, world)
-
-	var ground := TileMapLayer.new()
-	ground.name = "Ground"
-	ground.tile_set = gts
-	ground.z_index = -10
-	_add(main, world, ground)
-	var half := GROUND_TILES / 2
-	for y in range(-half, half):
-		for x in range(-half, half):
-			ground.set_cell(Vector2i(x, y), ground_source, Vector2i.ZERO)
-
-	var props := TileMapLayer.new()
-	props.name = "Props"
-	props.tile_set = pts
-	props.y_sort_enabled = true
-	_add(main, world, props)
-	_place_starter_forest(props, props_source, scene_ids, ground)
-
-	# Campfire in the middle of the clearing (instanced, so tweaks in campfire.tscn stay).
-	var campfire: Node2D = (load("res://assets/props/campfire.tscn") as PackedScene).instantiate()
-	campfire.name = "Campfire"
-	_add(main, world, campfire)
-
-	var spawn := Marker2D.new()
-	spawn.name = "Spawn"
-	spawn.position = SPAWN_OFFSET
-	_add(main, world, spawn)
+	# World (ground, forest, campfire, spawn) comes from the WorldBuilder node so
+	# the command line and the editor button give the same result.
+	var builder := main.get_node_or_null("WorldBuilder")
+	if builder == null:
+		builder = Node.new()
+		builder.name = "WorldBuilder"
+		builder.set_script(load("res://tools/world_builder.gd"))
+		_add(main, main, builder)
+	print("pines placed: ", builder.rebuild(main))
 
 	var packed := PackedScene.new()
 	packed.pack(main)
@@ -159,35 +126,6 @@ func _make_prop(p: Array, material: Material) -> PackedScene:
 	var packed := PackedScene.new()
 	packed.pack(root)
 	return packed
-
-
-func _place_starter_forest(props: TileMapLayer, source: int, ids: Array, ground: TileMapLayer) -> void:
-	# Pines only. Density follows noise so there are thick stands and thinner
-	# patches, and ramps up from the clearing edge.
-	var pine: int = ids[2]
-	var rng := RandomNumberGenerator.new()
-	rng.seed = 777
-	var noise := FastNoiseLite.new()
-	noise.seed = 777
-	noise.frequency = 0.0025
-	var rect := ground.get_used_rect()
-	var size := Vector2(rect.size) * Vector2(ground.tile_set.tile_size)
-	var top_left := Vector2(rect.position) * Vector2(ground.tile_set.tile_size)
-	var taken := {}
-	var y := top_left.y + 40.0
-	while y < top_left.y + size.y - 20.0:
-		var x := top_left.x + 30.0
-		while x < top_left.x + size.x - 30.0:
-			var p := Vector2(x + rng.randf_range(-TREE_JITTER, TREE_JITTER), y + rng.randf_range(-TREE_JITTER, TREE_JITTER))
-			var d := p.length()
-			var density := clampf(0.6 + noise.get_noise_2dv(p) * 0.9, 0.15, 1.0) * smoothstep(CLEARING, CLEARING + 220.0, d)
-			if rng.randf() < density * FOREST_FILL:
-				var cell := props.local_to_map(p)
-				if not taken.has(cell):
-					taken[cell] = true
-					props.set_cell(cell, source, Vector2i.ZERO, pine)
-			x += TREE_SPACING
-		y += TREE_SPACING * 0.8      # rows a bit closer: the 3/4 view squashes depth
 
 
 func _add(owner_node: Node, parent: Node, child: Node) -> void:

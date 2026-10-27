@@ -1,4 +1,4 @@
 res://main.tscn
+res://tools/build_world.gd
 res://assets/tiles/ground_tileset.tres
 res://assets/props/props_tileset.tres
-res://tools/build_world.gd
