@@ -5,15 +5,24 @@ extends RefCounted
 ##
 ## "prop" = the map prop image that can be picked up as this item (pebbles and
 ## sticks already lying in the forest). "world_scale" = size on the ground.
+## "gleam" = glints on the ground like the ore nodes (copper_material.tres).
 
 const ITEMS := {
+	# Tools (tools bar, keys 1-4). Icons: tools/make_item_icons.py. Spade and
+	# pickaxe are placeholders for now: they can be held but don't do anything yet.
 	"axe": {"name": "Axe", "icon": preload("res://assets/ui/axe.png"), "tool": true},
-	"stone": {"name": "Stone", "icon": preload("res://assets/props/pebble.png"), "stack": 20,
-			"world": preload("res://assets/props/pebble.png"), "world_scale": 1.0, "prop": "pebble.png"},
-	"twig": {"name": "Twig", "icon": preload("res://assets/props/stick.png"), "stack": 20,
+	"spade": {"name": "Spade", "icon": preload("res://assets/ui/spade.png"), "tool": true},
+	"pickaxe": {"name": "Pickaxe", "icon": preload("res://assets/ui/pickaxe.png"), "tool": true},
+	# Stone: from pebbles on the ground ("prop") and from mined stone nodes.
+	# Dropped stones show the stone chunk art, shrunk.
+	"stone": {"name": "Stone", "icon": preload("res://assets/ui/stone.png"), "stack": 20,
+			"world": preload("res://assets/ui/stone.png"), "world_scale": 0.5, "prop": "pebble.png"},
+	"twig": {"name": "Twig", "icon": preload("res://assets/ui/twig.png"), "stack": 20,
 			"world": preload("res://assets/props/stick.png"), "world_scale": 1.0, "prop": "stick.png"},
-	"log": {"name": "Log", "icon": preload("res://assets/props/log.png"), "stack": 10,
-			"world": preload("res://assets/props/log.png"), "world_scale": 0.7},
+	"copper_ore": {"name": "Copper Ore", "icon": preload("res://assets/ui/copper_ore.png"), "stack": 20,
+			"world": preload("res://assets/ui/copper_ore.png"), "world_scale": 0.5, "gleam": true},
+	"log": {"name": "Log", "icon": preload("res://assets/ui/log.png"), "stack": 10,
+			"world": preload("res://assets/props/log_drop.png"), "world_scale": 1.0},
 }
 
 

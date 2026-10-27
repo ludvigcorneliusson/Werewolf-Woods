@@ -76,3 +76,27 @@ func remove(id: String, n := 1) -> int:
 				slots[i] = {}
 	changed.emit()
 	return taken
+
+
+## Drag and drop in the backpack (hud.gd): moves slot `from` onto slot `to`.
+## Same item: tops up the stack there (any leftover stays behind); otherwise
+## the two slots swap.
+func move(from: int, to: int) -> void:
+	if from == to or from < 0 or to < 0 or from >= slots.size() or to >= slots.size():
+		return
+	var a := slots[from]
+	var b := slots[to]
+	if a.is_empty():
+		return
+	if not b.is_empty() and b.get("id", "") == a.get("id", ""):
+		var put := mini(Items.stack_size(a.id) - int(b.count), int(a.count))
+		if put > 0:
+			b.count += put
+			a.count -= put
+			if a.count <= 0:
+				slots[from] = {}
+			changed.emit()
+			return
+	slots[from] = b
+	slots[to] = a
+	changed.emit()

@@ -1,0 +1,10 @@
+[gd_resource type="ShaderMaterial" format=3]
+
+[ext_resource type="Shader" path="res://assets/props/prop_fade.gdshader" id="1_rwvuw"]
+
+[resource]
+shader = ExtResource("1_rwvuw")
+shader_parameter/color_variance = true
+shader_parameter/fade_radius = 38.0
+shader_parameter/gleam = 0.28
+shader_parameter/gleam_period = 6.0

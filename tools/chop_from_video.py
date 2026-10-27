@@ -1,7 +1,8 @@
 """Turns the green-screen axe-chop video (H3, settler facing right) into a pixel-art strip.
 
-Used for assets/characters/settler_chop_right.png (ClipProj_H3_00013) and
-settler_chop_left.png (ClipProj_H3_00005).
+Used for assets/characters/settler_chop_right.png (ClipProj_H3_00013),
+settler_chop_left.png (ClipProj_H3_00005) and the pickaxe swing
+settler_mine_right.png (ClipProj_H3_00021, side "mine_right").
 Usage, from any folder:
   1. Extract every frame of the video into <work>/frames:
        ffmpeg -i chop.mp4 <work>/frames/f_%03d.png
@@ -37,6 +38,12 @@ VIDEOS = {
     'run_right': {'frames': list(range(5, 18)), 'ref': 1, 'out': 'settler_run_right.png'},
     # ClipProj_H3_00005 (facing left): impact = video frame 23, held at 24.
     'left': {'frames': [1] + list(range(3, 16)) + list(range(19, 25)) + list(range(31, 37)), 'impact': 23},
+    # ClipProj_H3_00021 (pickaxe, facing right): rest, raise overhead (held 12-19),
+    # strike down to the right (impact = video frame 23, crouched), hold, back up.
+    # Only the distinct frames; the game holds the poses (durations in player.gd MINE).
+    # Used for both sides for now (the left side is this strip mirrored).
+    'mine_right': {'frames': [1, 7, 8, 10, 12, 19, 20, 22, 23, 33, 35, 37], 'impact': 23,
+                   'out': 'settler_mine_right.png'},
 }
 FRAMES = VIDEOS[SIDE]['frames']
 REF = VIDEOS[SIDE].get('ref', FRAMES[0])

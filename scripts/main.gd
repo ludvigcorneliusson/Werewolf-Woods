@@ -18,17 +18,26 @@ const Rain := preload("res://scripts/rain.gd")
 const AdvancedSettings := preload("res://scripts/advanced_settings.gd")
 const MusicPlayer := preload("res://scripts/music.gd")
 const TreeChopping := preload("res://scripts/tree_chopping.gd")
+const Mining := preload("res://scripts/mining.gd")
+const NightEyes := preload("res://scripts/night_eyes.gd")
 const Inventory := preload("res://scripts/inventory.gd")
 const GameHud := preload("res://scripts/hud.gd")
 const Pickups := preload("res://scripts/pickups.gd")
 const Experience := preload("res://scripts/experience.gd")
 const LevelUp := preload("res://scripts/level_up.gd")
 const Upgrades := preload("res://scripts/upgrades.gd")
+const BuildMenu := preload("res://scripts/build_menu.gd")
+const Buildables := preload("res://scripts/buildables.gd")
+const Placer := preload("res://scripts/placer.gd")
 ## Shared by every prop scene; we feed it the player position so trees fade
 ## when the player walks behind them.
 const PROP_MATERIAL := preload("res://assets/props/prop_material.tres")
 ## Same fade, plus per-prop colour variation (see scripts/varied_prop.gd).
 const VARIED_MATERIAL := preload("res://assets/props/varied_material.tres")
+## Ore nodes: the same shader with the gleam on. Every other setting is copied
+## from VARIED_MATERIAL each frame (_sync_ore_material), so they get the same
+## light, darkness, fade and wind.
+const COPPER_MATERIAL := preload("res://assets/props/copper_material.tres")
 
 ## false = use the hand-painted World node in main.tscn (default).
 ## true  = use the old procedural generator (R makes a new random map).
@@ -458,8 +467,8 @@ var _round_label: Label
 	set(v):
 		dead_tree_hits = v
 		_apply_chopping()
-## Hits to chop out a stump (it drops a log and twigs).
-@export_range(1, 20, 1) var stump_hits := 3:
+## Hits to chop out a stump (it drops a log and twigs). 0 = as many as a tree (Tree Hits).
+@export_range(0, 20, 1) var stump_hits := 0:
 	set(v):
 		stump_hits = v
 		_apply_chopping()
@@ -476,6 +485,68 @@ var _round_label: Label
 @export_group("")
 
 var _chopping: Node
+
+# --- Mining -------------------------------------------------------------------
+# With the pickaxe (tool 3), left click mines ore and stone nodes: the same hit
+# mechanic as trees. A copper node crumbles after Ore Hits and drops copper ore,
+# a stone node after Stone Hits and drops stone. Where they spawn: WorldBuilder >
+# Ore / Stone.
+@export_group("Mining")
+## Pickaxe hits to break an ore node.
+@export_range(1, 30, 1) var ore_hits := 5:
+	set(v):
+		ore_hits = v
+		_apply_mining()
+## Pickaxe hits to break a small copper deposit.
+@export_range(1, 30, 1) var small_ore_hits := 3:
+	set(v):
+		small_ore_hits = v
+		_apply_mining()
+## Pickaxe hits to break a stone node.
+@export_range(1, 30, 1) var stone_hits := 4:
+	set(v):
+		stone_hits = v
+		_apply_mining()
+## Pickaxe swing speed (1 = normal).
+@export_range(0.3, 3.0, 0.05) var mine_speed := 1.0:
+	set(v):
+		mine_speed = v
+		_apply_mining()
+## Pick and rock-break volume (dB).
+@export_range(-40.0, 12.0, 0.5, "suffix:dB") var mine_volume := -4.0:
+	set(v):
+		mine_volume = v
+		_apply_mining()
+@export_group("")
+
+var _mining: Node
+
+# --- Night Eyes -----------------------------------------------------------------
+# At night a few pine canopies have tiny glowing animal eyes peering out
+# (scripts/night_eyes.gd). They blink and shut when you come close.
+@export_group("Night Eyes")
+## Animal eyes in the trees at night.
+@export var night_eyes := true:
+	set(v):
+		night_eyes = v
+		_apply_night_eyes()
+## Share of pines with eyes in them (0.01 = 1 in 100; rare).
+@export_range(0.0, 0.2, 0.001) var eyes_tree_share := 0.01
+## Chance of a second (and then a third) pair in the same tree.
+@export_range(0.0, 1.0, 0.01) var eyes_extra_pair := 0.3
+## Glow around each eye (0 = just the eyes).
+@export_range(0.0, 1.0, 0.01) var eyes_glow := 0.3:
+	set(v):
+		eyes_glow = v
+		_apply_night_eyes()
+## Eyes shut when you come this close to their tree (world px).
+@export_range(0.0, 600.0, 5.0, "suffix:px") var eyes_close_distance := 150.0:
+	set(v):
+		eyes_close_distance = v
+		_apply_night_eyes()
+@export_group("")
+
+var _night_eyes: Node
 
 # --- Survival -------------------------------------------------------------------
 # Health (werewolf bites take it off; at 0 the round is lost), the backpack and
@@ -499,6 +570,8 @@ var _chopping: Node
 ## Seconds a dropped item (logs and twigs from trees) stays on the ground before
 ## it disappears. 0 = never. Stones and sticks of the map never vanish.
 @export_range(0.0, 600.0, 1.0, "suffix:s") var drop_lifetime := 30.0
+## How far from you something you build can be placed (world px).
+@export_range(20.0, 600.0, 1.0, "suffix:px") var build_reach := 140.0
 ## How close you must be to pick something up (world px).
 @export_range(8.0, 120.0, 1.0, "suffix:px") var pickup_reach := 30.0
 @export_group("")
@@ -543,10 +616,18 @@ var _chopping: Node
 @export_range(1.0, 10.0, 0.1) var epic_power := 3.0
 ## XP for chopping out a stump.
 @export_range(0, 100, 1) var xp_stump := 1
+## XP for breaking an ore node.
+@export_range(0, 100, 1) var xp_ore := 3
+## XP for breaking a small copper deposit.
+@export_range(0, 100, 1) var xp_small_ore := 2
+## XP for breaking a stone node.
+@export_range(0, 100, 1) var xp_stone := 1
 @export_group("")
 
 var _xp: Node
 var _level_up: CanvasLayer
+var _build_menu: CanvasLayer
+var _placer: Node2D
 var upgrade_levels := {}            # upgrade id -> cards taken (counts towards its max level)
 var upgrade_power := {}             # upgrade id -> summed effect (common 1, rare 2, epic 3 ...)
 var _offered := {}                  # upgrade id -> rarity of the card on screen
@@ -662,7 +743,11 @@ var darkness: CanvasModulate     # only tints the scene now (vision colour/brigh
 var _dark: Node2D             # the organic darkness overlay
 var seed_value := 0
 
-var _hud_label: Label
+var _time_label: Label               # "Survived: 5:00", top left
+var _coord_label: Label              # map coordinates (ground tiles) under it
+var _survived := 0.0                 # seconds since the round started
+var _tile := Vector2(105, 107)       # ground tile size: 1 map coordinate
+var _last_hud := ""
 var _god_label: Label
 var god_mode := false
 var _saved_fog := true
@@ -722,6 +807,13 @@ func _ready() -> void:
 		player.connect("chop_hit", _chopping.on_chop_hit)
 	_chopping.tree_felled.connect(_on_tree_felled)
 	_apply_chopping()
+	_mining = Mining.new()
+	_mining.player = player
+	add_child(_mining)
+	if player.has_signal("mine_hit"):
+		player.connect("mine_hit", _mining.on_mine_hit)
+	_mining.node_broken.connect(_on_node_broken)
+	_apply_mining()
 	_setup_survival()
 	_footprints = Footprints.new()
 	add_child(_footprints)
@@ -735,6 +827,7 @@ func _ready() -> void:
 		_on_role_chosen.call_deferred(role)
 	elif show_start_menu:
 		var menu := StartMenu.new()
+		menu.main = self
 		add_child(menu)
 		menu.chosen.connect(_on_role_chosen)
 		menu.map_changed.connect(_on_map_settings_changed)
@@ -743,6 +836,13 @@ func _ready() -> void:
 		_day_night.start()
 		_weather.start()
 		_round_started = true
+	_night_eyes = NightEyes.new()
+	add_child(_night_eyes)
+	_night_eyes.tree_share = eyes_tree_share
+	_night_eyes.extra_pair_chance = eyes_extra_pair
+	_apply_night_eyes()
+	if is_instance_valid(world):
+		_night_eyes.setup(world.get_node_or_null("Props"), GameSettings.map_seed)
 	_plant_push = PlantPush.new()
 	_plant_push.player = player
 	_plant_push.props = world.get_node_or_null("Props") if is_instance_valid(world) else null
@@ -758,7 +858,11 @@ func _process(_delta: float) -> void:
 		_music.set_mood("day" if _day_night.phase == DayNight.Phase.DAY else "night")
 	_apply_sky()
 	_apply_rain_effects()
+	if _night_eyes and _day_night:
+		_night_eyes.night = smoothstep(0.65, 1.0, _day_night.night) if night_eyes else 0.0
+		_night_eyes.player = player
 	_update_health(_delta)
+	_update_clock(_delta)
 	if map:
 		map.set_player_position(player.global_position)
 	else:
@@ -768,6 +872,19 @@ func _process(_delta: float) -> void:
 		VARIED_MATERIAL.set_shader_parameter("fade_softness", see_through_softness)
 		VARIED_MATERIAL.set_shader_parameter("faded_alpha", see_through_alpha)
 		CHARACTER_MATERIAL.set_shader_parameter("player_pos", player.global_position)
+		_sync_ore_material()
+
+
+var _shared_uniforms: Array[String] = []
+
+func _sync_ore_material() -> void:
+	if _shared_uniforms.is_empty():
+		for u in VARIED_MATERIAL.shader.get_shader_uniform_list():
+			var n: String = u.name
+			if not n.begins_with("gleam"):
+				_shared_uniforms.append(n)
+	for n in _shared_uniforms:
+		COPPER_MATERIAL.set_shader_parameter(n, VARIED_MATERIAL.get_shader_parameter(n))
 
 
 ## Pushes the Wind settings to the shared prop shader.
@@ -947,6 +1064,7 @@ func _on_night() -> void:
 
 ## Rebuilds which cells hold tree trunks (from the props) and the campfire light.
 func _setup_survival() -> void:
+	add_to_group("fire_listeners")
 	health = max_health
 	_inventory = Inventory.new(inventory_slots)
 	add_child(_inventory)
@@ -967,6 +1085,8 @@ func _setup_survival() -> void:
 		_chopping.pickups = _pickups
 		_chopping.tree_cut.connect(_on_tree_cut)
 		_chopping.stump_cleared.connect(_on_stump_cleared)
+	if _mining:
+		_mining.pickups = _pickups
 	_xp = Experience.new()
 	add_child(_xp)
 	_apply_experience()
@@ -976,6 +1096,39 @@ func _setup_survival() -> void:
 	_level_up = LevelUp.new()
 	add_child(_level_up)
 	_level_up.chosen.connect(_on_upgrade_chosen)
+	# Building: B opens the menu, the placer puts it in the world.
+	_placer = Placer.new()
+	_placer.world = world
+	_placer.player = player
+	_placer.inventory = _inventory
+	_placer.hud = _game_hud
+	_placer.reach = build_reach
+	if is_instance_valid(world):
+		_placer.map_rect = _map_rect()
+	add_child(_placer)
+	_placer.placed.connect(_on_built)
+	_placer.cancelled.connect(func(): if is_instance_valid(player): player.set("build_mode", false))
+	_build_menu = BuildMenu.new()
+	_build_menu.inventory = _inventory
+	_build_menu.player = player
+	add_child(_build_menu)
+	_build_menu.picked.connect(func(id: String):
+		player.set("build_mode", true)
+		player.set("_chop_held", false)
+		_placer.start(id))
+
+
+## A fire or torch was put out / lit (E): redraw the night darkness.
+func on_fire_toggled(_fire: Node) -> void:
+	get_tree().create_timer(0.05, false).timeout.connect(_rebuild_darkness)
+
+
+## Something was built: it lights up the night if it's a fire.
+func _on_built(id: String, node: Node2D) -> void:
+	if is_instance_valid(player):
+		player.set("build_mode", false)
+	_game_hud.note("%s built" % Buildables.ALL[id].name, node.global_position + Vector2(0, -40), Color(0.75, 1.0, 0.7))
+	get_tree().create_timer(0.1, false).timeout.connect(_rebuild_darkness)
 
 
 func _apply_experience() -> void:
@@ -1006,6 +1159,31 @@ func _on_stump_cleared(stump: Node2D) -> void:
 		_game_hud.note("+%d XP" % xp_stump, stump.global_position + Vector2(0, -30), Color(0.82, 0.62, 1.0))
 		_xp.add_xp(xp_stump, "stump")
 	_on_tree_felled(stump)
+
+
+## An ore or stone node crumbled: XP, and light reaches the spot.
+func _on_node_broken(node: Node2D, image: String) -> void:
+	var stone := image.begins_with("stone")
+	var amount := xp_stone if stone else (xp_small_ore if image.contains("small") else xp_ore)
+	if amount > 0 and _xp:
+		_game_hud.note("+%d XP" % amount, node.global_position + Vector2(0, -50), Color(0.82, 0.62, 1.0))
+		_xp.add_xp(amount, "stone" if stone else "ore")
+	_on_tree_felled(node)
+
+
+func _apply_night_eyes() -> void:
+	if _night_eyes == null:
+		return
+	_night_eyes.glow = eyes_glow
+	_night_eyes.close_distance = eyes_close_distance
+
+
+func _apply_mining() -> void:
+	if _mining:
+		_mining.hits_to_break = {"ore": ore_hits, "ore_small": small_ore_hits, "stone": stone_hits}
+		_mining.volume_db = mine_volume
+	if player and "mine_speed" in player:
+		player.set("mine_speed", mine_speed)
 
 
 func _on_level_up(_level: int) -> void:
@@ -1149,6 +1327,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		return                              # no game hotkeys while the menu is open
 	elif event.is_action_pressed("pickup") and _pickups:
 		_pickups.try_pick()
+	elif event.is_action_pressed("build") and _build_menu and _game_hud and _game_hud.visible:
+		_build_menu.toggle()
 	elif event.is_action_pressed("inventory") and _game_hud and _game_hud.visible:
 		_game_hud.toggle_inventory()
 	elif _game_hud and _game_hud.visible and _tool_key(event) >= 0:
@@ -1184,7 +1364,7 @@ func _tool_key(event: InputEvent) -> int:
 
 ## God mode: no fog, mouse-wheel zoom, no collisions, fast movement, free camera.
 ## Turning it off restores fog, camera zoom and limits.
-# --- Advanced settings (Esc menu) ----------------------------------------------
+# --- Settings (main menu and Esc menu) -----------------------------------------
 
 ## Remembers the main.tscn values of every Advanced setting (for Reset), then
 ## applies the saved changes on top. Runs first in _ready, so everything built
@@ -1316,8 +1496,15 @@ func _become_werewolf() -> void:
 		_game_hud.visible = false          # health, tools and backpack are the settler's
 	if _pickups:
 		_pickups.enabled = false
+	if _placer:
+		_placer.cancel(true)
+		_placer.player = null
+	if _build_menu:
+		_build_menu.close()
 	if _chopping:
 		_chopping.player = wolf
+	if _mining:
+		_mining.player = wolf
 	if _footprints:
 		_footprints.walker = null          # only the villager leaves footprints
 	_dark.player = wolf
@@ -1381,6 +1568,28 @@ func _on_caught(_who: Node2D) -> void:
 	_flash("You were killed!", 0.0)
 	player.set_physics_process(false)
 	get_tree().create_timer(3.0).timeout.connect(func(): get_tree().reload_current_scene())
+
+
+## Top-left clock (counts up while the round runs; stops when you die) and
+## your map coordinates in ground tiles (0, 0 = the campfire; y grows southwards).
+func _update_clock(delta: float) -> void:
+	if _time_label == null:
+		return
+	if _round_started and not _dead:
+		_survived += delta
+	var secs := int(_survived)
+	var t := "%d:%02d" % [secs / 60, secs % 60]
+	if secs >= 3600:
+		t = "%d:%02d:%02d" % [secs / 3600, (secs / 60) % 60, secs % 60]
+	var c := Vector2i.ZERO
+	if is_instance_valid(player):
+		c = Vector2i((player.global_position / _tile).floor())
+	var key := t + "|" + str(c)
+	if key == _last_hud:
+		return
+	_last_hud = key
+	_time_label.text = "Survived: " + t
+	_coord_label.text = "X %d   Y %d" % [c.x, c.y]
 
 
 ## Big centred message (seconds = 0: stays).
@@ -1450,7 +1659,6 @@ func _new_map(new_seed: int) -> void:
 	cam.limit_bottom = int(map.map_size.y)
 	cam.reset_smoothing()
 
-	_hud_label.text = "Seed %d   |   WASD move · Shift sprint · R new map · F god mode · N skip time · T rain · Mouse wheel zoom" % seed_value
 
 
 ## A fresh forest every round from the menu settings (map size + seed), built by
@@ -1481,7 +1689,9 @@ func _setup_painted_world() -> void:
 	player.camera.zoom = Vector2(camera_zoom, camera_zoom)   # Camera settings on Main
 	_add_world_borders()
 	player.camera.reset_smoothing()
-	_hud_label.text = "Seed %d (%s)   |   WASD move · Shift sprint · Click (hold) chop · E pick up · Tab backpack · 1-4 tools · F god mode · N skip time · T rain · F11 fullscreen" % [GameSettings.map_seed, GameSettings.map_size] + (" · Mouse wheel zoom" if scroll_zoom else "")
+	var ground := world.get_node_or_null("Ground") as TileMapLayer
+	if ground and ground.tile_set:
+		_tile = Vector2(ground.tile_set.tile_size)
 
 
 func _add_world_borders() -> void:
@@ -1521,15 +1731,28 @@ func _build_hud() -> void:
 	hud.layer = 2
 	add_child(hud)
 
-	_hud_label = Label.new()
-	_hud_label.position = Vector2(16, 12)
-	_hud_label.add_theme_color_override("font_outline_color", Color.BLACK)
-	_hud_label.add_theme_constant_override("outline_size", 4)
-	hud.add_child(_hud_label)
+	# Top left: time survived this round, and your map coordinates under it.
+	_time_label = Label.new()
+	_time_label.position = Vector2(16, 10)
+	_time_label.text = "Survived: 0:00"
+	_time_label.add_theme_font_size_override("font_size", 22)
+	_time_label.add_theme_color_override("font_color", Color(0.93, 0.86, 0.68))
+	_time_label.add_theme_color_override("font_outline_color", Color.BLACK)
+	_time_label.add_theme_constant_override("outline_size", 5)
+	_time_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hud.add_child(_time_label)
+	_coord_label = Label.new()
+	_coord_label.position = Vector2(16, 40)
+	_coord_label.add_theme_font_size_override("font_size", 15)
+	_coord_label.add_theme_color_override("font_color", Color(0.88, 0.86, 0.80))
+	_coord_label.add_theme_color_override("font_outline_color", Color.BLACK)
+	_coord_label.add_theme_constant_override("outline_size", 4)
+	_coord_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hud.add_child(_coord_label)
 
 	_god_label = Label.new()
 	_god_label.text = "GOD MODE  ·  no fog · walk through anything · fast · mouse wheel zoom  ·  F to exit"
-	_god_label.position = Vector2(16, 40)
+	_god_label.position = Vector2(16, 64)
 	_god_label.add_theme_color_override("font_color", Color(1.0, 0.85, 0.3))
 	_god_label.add_theme_color_override("font_outline_color", Color.BLACK)
 	_god_label.add_theme_constant_override("outline_size", 4)
@@ -1550,6 +1773,7 @@ func _setup_input() -> void:
 		"toggle_rain": [KEY_T],
 		"toggle_fullscreen": [KEY_F11],
 		"pickup": [KEY_E],
+		"build": [KEY_B],
 		"inventory": [KEY_TAB, KEY_I],
 		"tool_1": [KEY_1],
 		"tool_2": [KEY_2],

@@ -168,9 +168,12 @@ shadow_item_cull_mask = 5
 texture = SubResource("GradientTexture2D_d8g2p")
 texture_scale = 0.7421875
 
-[node name="AudioStreamPlayer" type="AudioStreamPlayer" parent="." unique_id=982906656]
+[node name="AudioStreamPlayer" type="AudioStreamPlayer2D" parent="." unique_id=982906656]
 stream = ExtResource("3_pmr76")
-volume_db = -12.0
+volume_db = -9.0
 pitch_scale = 0.9
 autoplay = true
+max_distance = 650.0
+attenuation = 1.6
+panning_strength = 0.6
 parameters/looping = true

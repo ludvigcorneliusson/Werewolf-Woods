@@ -3,7 +3,7 @@ extends CanvasLayer
 ## world, the night and the werewolf keep going while it is open, and your
 ## character stands still because main.gd turns its movement input off.
 ##   Resume            - close the menu (Esc does the same)
-##   Advanced settings - world tuning while you play (scripts/advanced_settings.gd)
+##   Settings          - general + world tuning while you play (scripts/advanced_settings.gd)
 ##   Quit to main menu - leave the round
 ##   Quit game         - close the game
 ## main.gd creates it once and toggles it with open() / close().
@@ -59,8 +59,8 @@ func _ready() -> void:
 	_resume = StartMenu._button("Resume", true)
 	_resume.pressed.connect(close)
 	box.add_child(_resume)
-	var adv := StartMenu._button("Advanced settings", true)
-	adv.tooltip_text = "Weather, day & night, map/forest, fog, werewolf and wind."
+	var adv := StartMenu._button("Settings", true)
+	adv.tooltip_text = "Display, difficulty, volume, map/forest, weather, day & night, fog, werewolf and wind."
 	adv.pressed.connect(_open_advanced)
 	box.add_child(adv)
 	var leave := StartMenu._button("Quit to main menu", true)

@@ -76,10 +76,40 @@ extends Node
 @export_range(0.0, 50.0, 0.1) var mushroom_clusters := 4.0
 ## Pebbles (everywhere).
 @export_range(0.0, 100.0, 0.5) var pebbles := 8.0
-## Sticks (everywhere).
+## Sticks (mostly near trees, see below).
 @export_range(0.0, 100.0, 0.5) var sticks := 8.0
+## Share of sticks that lie near a tree; the rest land anywhere on the map.
+@export_range(0.0, 1.0, 0.01) var sticks_near_trees := 0.85
+## How far a stick near a tree lies from the edge of its trunk (world px):
+## min (x) - max (y). Mostly in front of / beside the tree, so canopies don't hide them.
+@export var stick_tree_distance := Vector2(14.0, 70.0)
 ## Keep this much open ground around the campfire (px).
 @export_range(0.0, 400.0, 1.0, "suffix:px") var campfire_space := 60.0
+
+@export_group("Ore")
+## Copper ore nodes per 1000 x 1000 px (rare: about one per two screens of
+## forest). Only in the forest, never near the camp clearing.
+@export_range(0.0, 10.0, 0.05) var ore_nodes := 0.5
+## Small copper deposits per 1000 x 1000 px (a bit more common than the big ones).
+@export_range(0.0, 10.0, 0.05) var small_ore_nodes := 0.6
+## Share of small deposits placed inside a stone cluster (an ore vein in the rocks).
+@export_range(0.0, 1.0, 0.01) var small_ore_in_stone := 0.35
+## Share of ore nodes placed right next to a boulder (the rest anywhere in the forest).
+@export_range(0.0, 1.0, 0.01) var ore_near_boulders := 0.4
+## Keep ore this far beyond the clearing's edge (px).
+@export_range(0.0, 2000.0, 10.0, "suffix:px") var ore_clearance := 300.0
+
+@export_group("Stone")
+## Clusters of stone nodes per 1000 x 1000 px (in the forest, not in the clearing).
+@export_range(0.0, 10.0, 0.05) var stone_clusters := 0.25
+## Stone nodes per cluster: min (x) - max (y).
+@export var stone_cluster_size := Vector2(2, 5)
+## How far a cluster spreads from its middle (px; flattened for the 3/4 view).
+@export_range(40.0, 600.0, 5.0, "suffix:px") var stone_cluster_radius := 130.0
+## Loose pebbles (pickable stone) scattered around each cluster: min (x) - max (y).
+@export var stone_cluster_pebbles := Vector2(1, 4)
+## Keep stone clusters this far beyond the clearing's edge (px).
+@export_range(0.0, 2000.0, 10.0, "suffix:px") var stone_clearance := 80.0
 
 @export_group("Animals")
 ## Rabbits per million square px (Medium map = about 110 million), placed
@@ -105,8 +135,13 @@ extends Node
 const GROUND_TILESET := "res://assets/tiles/ground_tileset.tres"
 const PROPS_TILESET := "res://assets/props/props_tileset.tres"
 const CAMPFIRE := "res://assets/props/campfire.tscn"
+## Stone node scenes: [name, chance weight, solid radius used when placing].
+const STONE_NODES := [["stone_node_c", 0.45, 26.0], ["stone_node_a", 0.3, 40.0], ["stone_node_b", 0.25, 34.0]]
 ## Per tree type, in ART pixels: [root half-width, visible trunk height below the
 ## canopy]. Used so trunks never visibly touch. Dead trees show their whole trunk.
+## How close a tree trunk may stand to the map edge: [sides, top, bottom] (world
+## px). Top keeps the trunk itself on screen (the canopy grows upwards).
+const TREE_EDGE := Vector3(6.0, 24.0, 6.0)
 const TREE_SHAPE := {
 	"pine_tall": [14.0, 32.0],
 	"pine_dark": [7.0, 14.0],
@@ -225,6 +260,7 @@ var _solid := {}          # 64 px buckets -> [[pos, radius], ...] of trunks/rock
 var _counts := {}
 var _trees := {}          # 128 px column buckets -> [[pos, half_width, trunk_height], ...] in world px
 var _tree_scale := {}     # tree name -> largest scale it can get (from its scene)
+var _stone_centers: Array[Vector2] = []   # middles of the stone clusters (small ore likes them)
 var _keepouts := []       # painted props: [position, radius] the generator stays clear of
 var _tree_size := {}      # tree name -> Vector2 sprite size at its largest scale (world px)
 
@@ -268,13 +304,21 @@ func _place_props(props: TileMapLayer, ground: TileMapLayer) -> int:
 	# --- Trees on a jittered grid; density follows noise, ramps up from the clearing.
 	# Spots are picked first, then dead trees are placed before living ones:
 	# a dead tree shows its whole trunk, so it needs the most room to never touch.
+	# The grid runs past the map edge by the jitter, and only trunks that land on
+	# the map are kept, so the forest stays just as dense right up to the edge.
+	var full := Rect2(Vector2(rect.position) * tile, Vector2(rect.size) * tile)
+	var tree_area := Rect2(full.position + Vector2(TREE_EDGE.x, TREE_EDGE.y),
+			full.size - Vector2(TREE_EDGE.x * 2.0, TREE_EDGE.y + TREE_EDGE.z))
+	var reach := tree_jitter + tree_spacing
 	var spots := []
-	var y := area.position.y + 10.0
-	while y < area.end.y:
-		var x := area.position.x
-		while x < area.end.x:
+	var y := full.position.y - reach
+	while y < full.end.y + reach:
+		var x := full.position.x - reach
+		while x < full.end.x + reach:
 			var p := Vector2(x + _rng.randf_range(-tree_jitter, tree_jitter), y + _rng.randf_range(-tree_jitter, tree_jitter))
-			if _rng.randf() < _forest(p) * forest_fill:
+			if not tree_area.has_point(p):
+				pass
+			elif _rng.randf() < _forest(p) * forest_fill:
 				var kind := "pine_tall" if _ids.has("pine_tall") else "pine_dark"
 				if _rng.randf() < dead_tree_share:
 					kind = "dead_pine" if _rng.randf() < 0.5 else "dead_tree"
@@ -290,6 +334,8 @@ func _place_props(props: TileMapLayer, ground: TileMapLayer) -> int:
 				spots.append([kind, p])
 			x += tree_spacing
 		y += tree_spacing * 0.8      # rows a bit closer: the 3/4 view squashes depth
+	# Stone clusters go in before the trees, so the forest grows around them.
+	_place_stone_clusters(area)
 	var trunks: Array[Vector2] = []
 	for dead_pass in [true, false]:
 		for s in spots:
@@ -298,11 +344,40 @@ func _place_props(props: TileMapLayer, ground: TileMapLayer) -> int:
 
 	# --- Solid forest props (kept clear of trunks and each other).
 	var per := area.get_area() / 1_000_000.0
+	var boulder_spots: Array[Vector2] = []
 	for i in int(boulders * per):
 		var p := _random_point(area)
 		if _rng.randf() < _forest(p) and _put("boulder", p, 20.0):
+			boulder_spots.append(p)
 			for k in _rng.randi_range(0, 2):       # a few small rocks around some boulders
 				_put("mossy_rock", p + Vector2.from_angle(_rng.randf() * TAU) * Vector2(_rng.randf_range(26, 38), _rng.randf_range(14, 22)), 11.0)
+	# --- Copper ore nodes: rare, in the forest, some leaning on a boulder.
+	var min_r := clearing + clearing_fade + ore_clearance
+	for i in int(ore_nodes * per):
+		for attempt in 10:
+			var p := _random_point(area)
+			if not boulder_spots.is_empty() and _rng.randf() < ore_near_boulders:
+				var b: Vector2 = boulder_spots[_rng.randi() % boulder_spots.size()]
+				p = b + Vector2.from_angle(_rng.randf() * TAU) * Vector2(_rng.randf_range(46, 60), _rng.randf_range(20, 28))
+			if p.length() < min_r or not area.has_point(p) or _rng.randf() > _forest(p) + 0.2:
+				continue
+			if _put("copper_node", p, 26.0):
+				break
+	# Small deposits: some inside stone clusters, the rest in the forest.
+	for i in int(small_ore_nodes * per):
+		for attempt in 10:
+			var p := _random_point(area)
+			var in_stone := not _stone_centers.is_empty() and _rng.randf() < small_ore_in_stone
+			if in_stone:
+				var c: Vector2 = _stone_centers[_rng.randi() % _stone_centers.size()]
+				var d := _rng.randf_range(0.3, 1.3) * stone_cluster_radius
+				p = c + Vector2.from_angle(_rng.randf() * TAU) * Vector2(d, d * 0.6)
+			if p.length() < min_r or not area.has_point(p):
+				continue
+			if not in_stone and _rng.randf() > _forest(p) + 0.2:
+				continue
+			if _put("copper_node_small", p, 18.0):
+				break
 	for i in int(logs * per):
 		var p := _random_point(area)
 		if _rng.randf() < _forest(p):
@@ -352,8 +427,14 @@ func _place_props(props: TileMapLayer, ground: TileMapLayer) -> int:
 		_put("grass_tuft", _random_point(area), 0.0)
 	for i in int(pebbles * per):
 		_put("pebble", _random_point(area), 0.0)
+	var all_trees := []
+	for col in _trees:
+		all_trees.append_array(_trees[col])
 	for i in int(sticks * per):
-		_put("stick", _random_point(area), 0.0)
+		var p := _random_point(area)
+		if not all_trees.is_empty() and _rng.randf() < sticks_near_trees:
+			p = _near_tree(all_trees, area)
+		_put("stick", p, 0.0)
 
 	print("WorldBuilder placed: ", _counts)
 	return _taken.size()
@@ -386,6 +467,63 @@ func _place_rabbits(world: Node, ground: TileMapLayer) -> void:
 		r.position = p
 		holder.add_child(r)
 		placed += 1
+
+
+## Clusters of 2-5 stone nodes in the forest: the first sits at the middle, the
+## others around it (flattened ellipse), never overlapping; plus a few loose
+## pebbles in between.
+func _place_stone_clusters(area: Rect2) -> void:
+	_stone_centers.clear()
+	var count := int(stone_clusters * area.get_area() / 1_000_000.0)
+	var min_r := clearing + clearing_fade + stone_clearance
+	var total_w := 0.0
+	for k in STONE_NODES:
+		total_w += k[1]
+	for i in count:
+		var c := Vector2.INF
+		for attempt in 12:
+			var p := _random_point(area.grow(-stone_cluster_radius))
+			if p.length() >= min_r and _rng.randf() < _forest(p) + 0.25:
+				c = p
+				break
+		if c == Vector2.INF:
+			continue
+		_stone_centers.append(c)
+		var n := _rng.randi_range(int(stone_cluster_size.x), int(maxf(stone_cluster_size.y, stone_cluster_size.x)))
+		var placed := 0
+		for j in n * 4:                                  # a few tries per node
+			if placed >= n:
+				break
+			var roll := _rng.randf() * total_w
+			var kind: Array = STONE_NODES[0]
+			for k in STONE_NODES:
+				roll -= k[1]
+				if roll <= 0.0:
+					kind = k
+					break
+			var q := c
+			if placed > 0:
+				var d := _rng.randf_range(0.35, 1.0) * stone_cluster_radius
+				q = c + Vector2.from_angle(_rng.randf() * TAU) * Vector2(d, d * 0.6)
+			if area.has_point(q) and _put(kind[0], q, kind[2]):
+				placed += 1
+		for k in _rng.randi_range(int(stone_cluster_pebbles.x), int(maxf(stone_cluster_pebbles.y, stone_cluster_pebbles.x))):
+			var d := _rng.randf_range(0.2, 1.2) * stone_cluster_radius
+			_put("pebble", c + Vector2.from_angle(_rng.randf() * TAU) * Vector2(d, d * 0.6), 0.0)
+
+
+## A spot near a random tree: beside or in front of it (south side, where the
+## canopy doesn't cover the ground), between stick_tree_distance x and y px from
+## the trunk's edge, not inside another trunk or rock. Falls back to anywhere.
+func _near_tree(trees: Array, area: Rect2) -> Vector2:
+	for attempt in 6:
+		var t: Array = trees[_rng.randi() % trees.size()]
+		var ang := _rng.randf_range(-0.35, PI + 0.35)          # y grows downwards: 0..PI = in front
+		var d: float = t[1] + _rng.randf_range(stick_tree_distance.x, maxf(stick_tree_distance.y, stick_tree_distance.x))
+		var p: Vector2 = t[0] + Vector2(cos(ang) * d, sin(ang) * d * 0.6)   # flattened for the 3/4 view
+		if area.has_point(p) and not _blocked(p, 6.0):
+			return p
+	return _random_point(area)
 
 
 ## True if p (with radius r) overlaps a generated trunk/rock/log.

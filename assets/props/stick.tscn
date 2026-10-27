@@ -11,4 +11,4 @@ script = ExtResource("1_cmav8")
 material = ExtResource("2_cr8ex")
 texture = ExtResource("3_sk8ai")
 centered = false
-offset = Vector2(-9, -11)
+offset = Vector2(-14, -10)

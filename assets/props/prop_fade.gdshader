@@ -19,6 +19,14 @@ uniform float fade_softness = 5.0;      // soft edge (world px)
 uniform float faded_alpha = 0.35;
 uniform bool color_variance = false;
 
+// Ore gleam (copper_material.tres only; 0 = off for every other prop). Now and
+// then a soft glint sweeps diagonally across the ore-coloured pixels, and their
+// brightest pixels twinkle faintly. Each node has its own timing (from its
+// position). Added before the night darkness, so it only shows where it's lit.
+uniform float gleam = 0.0;              // strength (0.25 = very slight)
+uniform float gleam_period = 6.0;       // seconds between glints on one node
+uniform vec3 gleam_color : source_color = vec3(1.0, 0.88, 0.66);
+
 // Wind (set from main.gd's Wind settings). Plain sine sway: each prop's sprite is
 // bent like a hinge at its base - the top moves sideways, the base stays put.
 uniform float wind_strength = 3.0;      // world px the top of a sway=1 prop swings each way
@@ -130,6 +138,19 @@ void fragment() {
 		float behind = smoothstep(0.0, -0.9, dir.y);                             // you are north of it
 		float shade = clamp(dk_side_shade * away + dk_back_shade * behind, 0.0, 0.9);
 		COLOR.rgb *= 1.0 - shade * dk_darkness;
+	}
+	if (gleam > 0.0) {
+		vec3 raw = rgb2hsv(tex.rgb);
+		// Ore = saturated orange/red pixels that aren't the dark outline.
+		float ore = step(raw.x, 0.11) * smoothstep(0.4, 0.55, raw.y) * smoothstep(0.3, 0.45, raw.z) * tex.a;
+		vec2 texel = floor(UV / TEXTURE_PIXEL_SIZE) * TEXTURE_PIXEL_SIZE;   // whole art pixels: stays crisp
+		float h = fract(sin(dot(base_pos, vec2(12.9898, 78.233))) * 43758.5453);
+		float t = fract(TIME / max(gleam_period, 0.1) + h);
+		float u = (texel.x + texel.y) * 0.75;                      // diagonal, top left -> bottom right
+		float band = 1.0 - smoothstep(0.0, 0.1, abs(u - (t * 6.0 - 0.6)));
+		float twinkle = pow(0.5 + 0.5 * sin(TIME * 2.1 + h * 40.0 + texel.x * 23.0 + texel.y * 17.0), 12.0)
+				* smoothstep(0.75, 0.95, raw.z);
+		COLOR.rgb += gleam_color * gleam * ore * (band + twinkle * 0.6);
 	}
 	COLOR.rgb = mix(COLOR.rgb, dk_dark_color, dk_darkness * (1.0 - base_lit));
 }

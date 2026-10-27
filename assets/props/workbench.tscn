@@ -1,0 +1,23 @@
+[gd_scene format=3]
+
+[ext_resource type="Material" path="res://assets/props/varied_material.tres" id="1_mat"]
+[ext_resource type="Texture2D" path="res://assets/props/workbench.png" id="2_tex"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_wb"]
+size = Vector2(55, 10)
+
+[node name="Workbench" type="Node2D" groups=["workbenches"]]
+
+[node name="Sprite" type="Sprite2D" parent="."]
+self_modulate = Color(0.5, 0.5, 0.5, 0.5)
+light_mask = 2
+material = ExtResource("1_mat")
+texture = ExtResource("2_tex")
+centered = false
+offset = Vector2(-35, -32)
+
+[node name="Body" type="StaticBody2D" parent="."]
+
+[node name="Collision" type="CollisionShape2D" parent="Body"]
+position = Vector2(-3, -6)
+shape = SubResource("RectangleShape2D_wb")

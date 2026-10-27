@@ -1,5 +1,5 @@
 extends CanvasLayer
-## Game HUD: health bar (bottom left), tools bar (bottom centre, keys 1-4), the
+## Game HUD: health bar with the XP bar under it (bottom left), tools bar (bottom centre, keys 1-4), the
 ## backpack inventory (Tab / I, opens above the tools bar), the "E" pick-up
 ## prompt over the nearest item and small "+1 Twig" notes.
 ## Created by main.gd; drawn above the night darkness.
@@ -14,9 +14,10 @@ const BORDER := Color(0.32, 0.36, 0.30)
 const SLOT := 52                     # slot size, screen px
 
 var inventory: Node                  # scripts/inventory.gd
-var tools: Array[String] = ["axe", "", "", ""]
+var tools: Array[String] = ["axe", "spade", "pickaxe", ""]
 var selected_tool := 0
 
+var _health_box: PanelContainer
 var _health_fill: ColorRect
 var _health_back: ColorRect
 var _health_lag: ColorRect
@@ -26,13 +27,18 @@ var _tool_slots: Array[Panel] = []
 var _tools_box: PanelContainer
 var _inv_panel: PanelContainer
 var _inv_slots: Array[Panel] = []
+var _drag_from := -1                 # backpack slot being dragged, -1 = none
+var _drag_icon: TextureRect          # follows the mouse while dragging
+var _drag_start := Vector2.ZERO
+var _press_slot := -1                # slot under the mouse when the button went down
 var _prompt: Label
 var _hurt: ColorRect
 var _notes: Control
 var _xp_fill: ColorRect
 var _xp_label: Label
 var _level_label: Label
-const XP_COLOR := Color(0.66, 0.38, 0.95)
+const XP_COLOR := Color(0.42, 0.16, 0.74)     # deep purple
+const XP_WIDTH := 150.0
 var _xp_frac := 0.0
 
 
@@ -48,7 +54,7 @@ func _ready() -> void:
 	_notes.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_notes)
 	_build_health()
-	_build_xp()
+	_health_box.resized.connect(_place)
 	_build_tools()
 	_build_inventory()
 	_prompt = _key_label("E")
@@ -66,15 +72,16 @@ func _ready() -> void:
 
 func _build_health() -> void:
 	var box := PanelContainer.new()
+	_health_box = box
 	box.add_theme_stylebox_override("panel", _box(PANEL, BORDER, 6))
-	box.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
-	box.position = Vector2(16, -16 - 40)
-	box.grow_vertical = Control.GROW_DIRECTION_BEGIN
-	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	box.mouse_filter = Control.MOUSE_FILTER_STOP          # clicks here never swing the axe
 	add_child(box)
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 3)
+	box.add_child(col)
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 8)
-	box.add_child(row)
+	col.add_child(row)
 	var heart := TextureRect.new()
 	heart.texture = preload("res://assets/ui/heart.png")
 	heart.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
@@ -110,7 +117,7 @@ func _build_health() -> void:
 	_level_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_level_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	_level_label.add_theme_font_size_override("font_size", 18)
-	_level_label.add_theme_color_override("font_color", XP_COLOR.lightened(0.3))
+	_level_label.add_theme_color_override("font_color", XP_COLOR.lightened(0.45))
 	_level_label.add_theme_color_override("font_outline_color", Color.BLACK)
 	_level_label.add_theme_constant_override("outline_size", 4)
 	_level_label.text = "LV 1"
@@ -124,6 +131,7 @@ func _build_health() -> void:
 	_health_label.add_theme_color_override("font_outline_color", Color.BLACK)
 	_health_label.add_theme_constant_override("outline_size", 4)
 	bar.add_child(_health_label)
+	_build_xp(col)
 
 
 ## Shows health (hurt = flash the screen red: you just took a hit).
@@ -146,40 +154,41 @@ func set_health(value: float, max_value: float, hurt := false) -> void:
 
 # --- experience ------------------------------------------------------------------
 
-## Purple XP bar along the bottom edge; XP numbers above its right end. The
-## current level is shown next to the health bar.
-func _build_xp() -> void:
+## Thin purple XP bar right under the health bar, with the XP numbers to its
+## right. The current level is shown next to the health bar.
+func _build_xp(col: VBoxContainer) -> void:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 8)
+	col.add_child(row)
+	var indent := Control.new()                       # line up under the health bar (heart width)
+	indent.custom_minimum_size = Vector2(27, 0)
+	row.add_child(indent)
+	var bar := Control.new()
+	bar.custom_minimum_size = Vector2(XP_WIDTH, 12)
+	bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	row.add_child(bar)
 	var back := ColorRect.new()
-	back.color = Color(0.03, 0.02, 0.05, 0.8)
-	back.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
-	back.offset_top = -8
-	back.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(back)
+	back.color = Color(0.03, 0.02, 0.05, 0.9)
+	back.position = Vector2(0, 3)
+	back.size = Vector2(XP_WIDTH, 6)
+	bar.add_child(back)
 	_xp_fill = ColorRect.new()
 	_xp_fill.color = XP_COLOR
-	_xp_fill.anchor_right = 0.0
-	_xp_fill.offset_top = 1
-	_xp_fill.offset_bottom = 7
-	_xp_fill.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	back.add_child(_xp_fill)
+	_xp_fill.position = Vector2(1, 4)
+	_xp_fill.size = Vector2(0, 4)
+	bar.add_child(_xp_fill)
 	var shine := ColorRect.new()                      # thin highlight on top of the fill
-	shine.color = Color(1, 1, 1, 0.18)
+	shine.color = Color(1, 1, 1, 0.14)
 	shine.set_anchors_preset(Control.PRESET_TOP_WIDE)
-	shine.offset_bottom = 2
-	shine.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	shine.offset_bottom = 1
 	_xp_fill.add_child(shine)
 	_xp_label = Label.new()
-	_xp_label.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
-	_xp_label.offset_left = -160
-	_xp_label.offset_right = -12
-	_xp_label.offset_top = -30
-	_xp_label.offset_bottom = -9
-	_xp_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	_xp_label.add_theme_font_size_override("font_size", 14)
-	_xp_label.add_theme_color_override("font_color", XP_COLOR.lightened(0.35))
+	_xp_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_xp_label.add_theme_font_size_override("font_size", 12)
+	_xp_label.add_theme_color_override("font_color", XP_COLOR.lightened(0.5))
 	_xp_label.add_theme_color_override("font_outline_color", Color.BLACK)
-	_xp_label.add_theme_constant_override("outline_size", 4)
-	add_child(_xp_label)
+	_xp_label.add_theme_constant_override("outline_size", 3)
+	row.add_child(_xp_label)
 	set_xp(0, 10, 1)
 
 
@@ -193,12 +202,13 @@ func set_xp(xp: int, needed: int, level: int) -> void:
 			_level_label.scale = Vector2(1.4, 1.4)
 			create_tween().tween_property(_level_label, "scale", Vector2.ONE, 0.3).set_trans(Tween.TRANS_BACK)
 		_level_label.text = "LV %d" % level
+	var full := XP_WIDTH - 2.0
 	var t := create_tween()
 	if f < _xp_frac:
 		# Wrapped to a new level: fill up, then start again from empty.
-		t.tween_property(_xp_fill, "anchor_right", 1.0, 0.15)
-		t.tween_property(_xp_fill, "anchor_right", 0.0, 0.0)
-	t.tween_property(_xp_fill, "anchor_right", f, 0.25).set_ease(Tween.EASE_OUT)
+		t.tween_property(_xp_fill, "size:x", full, 0.15)
+		t.tween_property(_xp_fill, "size:x", 0.0, 0.0)
+	t.tween_property(_xp_fill, "size:x", full * f, 0.25).set_ease(Tween.EASE_OUT)
 	_xp_frac = f
 
 
@@ -208,7 +218,7 @@ func _build_tools() -> void:
 	var box := PanelContainer.new()
 	_tools_box = box
 	box.add_theme_stylebox_override("panel", _box(PANEL, BORDER, 6))
-	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	box.mouse_filter = Control.MOUSE_FILTER_STOP          # clicks here never swing the axe
 	add_child(box)
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 6)
@@ -243,7 +253,7 @@ func _refresh_tools() -> void:
 func _build_inventory() -> void:
 	_inv_panel = PanelContainer.new()
 	_inv_panel.add_theme_stylebox_override("panel", _box(PANEL, BORDER, 10))
-	_inv_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_inv_panel.mouse_filter = Control.MOUSE_FILTER_STOP     # clicks inside the backpack never swing the axe
 	_inv_panel.visible = false
 	add_child(_inv_panel)
 	var col := VBoxContainer.new()
@@ -266,11 +276,80 @@ func _build_inventory() -> void:
 		grid.add_child(s)
 		_inv_slots.append(s)
 	_inv_panel.resized.connect(_place)
+	_inv_panel.gui_input.connect(_on_inv_input)
+	_drag_icon = TextureRect.new()
+	_drag_icon.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	_drag_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_drag_icon.visible = false
+	_drag_icon.z_index = 10
+	add_child(_drag_icon)
 
 
-## Tools bar centred on the bottom edge, backpack just above it (screen px).
+# --- dragging items in the backpack ---------------------------------------------
+# Hold the left button on an item and drag it onto another slot: it moves there
+# (swapping with what was there; the same item tops up that stack). Let go
+# outside the backpack and nothing changes.
+
+func _on_inv_input(event: InputEvent) -> void:
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
+		if event.pressed:
+			_press_slot = _slot_at(event.global_position)
+			_drag_start = event.global_position
+		else:
+			if _drag_from >= 0:
+				var to := _slot_at(event.global_position)
+				if to >= 0 and inventory:
+					inventory.move(_drag_from, to)
+			_end_drag()
+			_press_slot = -1
+		_inv_panel.accept_event()
+	elif event is InputEventMouseMotion:
+		if _drag_from < 0 and _press_slot >= 0 and (event.button_mask & MOUSE_BUTTON_MASK_LEFT) \
+				and event.global_position.distance_to(_drag_start) > 4.0:
+			_begin_drag(_press_slot)
+		if _drag_from >= 0:
+			_drag_icon.global_position = (event.global_position - _drag_icon.size / 2.0).round()
+			_highlight_target(_slot_at(event.global_position))
+
+
+func _begin_drag(i: int) -> void:
+	if inventory == null or i >= inventory.slots.size() or inventory.slots[i].is_empty():
+		return
+	_drag_from = i
+	var icon := _inv_slots[i].get_node("Icon") as TextureRect
+	_drag_icon.texture = icon.texture
+	_drag_icon.size = icon.size
+	_drag_icon.visible = true
+	icon.modulate.a = 0.3                        # the item "lifts" out of its slot
+
+
+func _end_drag() -> void:
+	_drag_from = -1
+	_drag_icon.visible = false
+	_refresh_inventory()
+
+
+func _highlight_target(to: int) -> void:
+	for i in _inv_slots.size():
+		var s: Dictionary = inventory.slots[i] if inventory and i < inventory.slots.size() else {}
+		_fill_slot(_inv_slots[i], s.get("id", ""), int(s.get("count", 0)), i == to and i != _drag_from)
+	(_inv_slots[_drag_from].get_node("Icon") as TextureRect).modulate.a = 0.3
+
+
+## Backpack slot under a screen position, or -1.
+func _slot_at(pos: Vector2) -> int:
+	for i in _inv_slots.size():
+		if _inv_slots[i].get_global_rect().has_point(pos):
+			return i
+	return -1
+
+
+## Health box bottom left, tools bar centred on the bottom edge, backpack just
+## above it (screen px).
 func _place() -> void:
 	var view := get_viewport().get_visible_rect().size
+	_health_box.reset_size()
+	_health_box.position = Vector2(16, view.y - _health_box.size.y - 16)
 	_tools_box.reset_size()
 	_tools_box.position = Vector2(roundf((view.x - _tools_box.size.x) / 2.0), view.y - _tools_box.size.y - 16)
 	_inv_panel.reset_size()
@@ -280,6 +359,8 @@ func _place() -> void:
 
 func toggle_inventory() -> void:
 	_inv_panel.visible = not _inv_panel.visible
+	if not _inv_panel.visible and _drag_from >= 0:
+		_end_drag()
 	_place.call_deferred()
 
 
@@ -293,6 +374,7 @@ func _refresh_inventory() -> void:
 	for i in _inv_slots.size():
 		var s: Dictionary = inventory.slots[i] if i < inventory.slots.size() else {}
 		_fill_slot(_inv_slots[i], s.get("id", ""), int(s.get("count", 0)), false)
+		(_inv_slots[i].get_node("Icon") as TextureRect).modulate.a = 1.0
 
 
 # --- pick-up prompt and notes ----------------------------------------------------

@@ -39,7 +39,7 @@ const PROPS := [
 	{"name": "dead_pine", "foot": 4, "solid": {"ellipse": Vector2(11, 5), "at": Vector2(-1, -7)}, "vision": Vector2(11, 5), "vision_at": Vector2(-1, -7), "big": true, "vary": DEAD_VARY},
 	{"name": "dead_tree", "foot": 4, "solid": {"ellipse": Vector2(9, 5), "at": Vector2(2, -6)}, "vision": Vector2(9, 5), "vision_at": Vector2(2, -6), "big": true, "vary": DEAD_VARY},
 	{"name": "stump", "foot": 3, "solid": {"ellipse": Vector2(11, 5), "at": Vector2(0, -7)}, "vision": Vector2.ZERO, "big": true},
-	{"name": "log", "foot": 4, "solid": {"capsule": Vector2(6, 52)}, "vision": Vector2.ZERO, "big": true},
+	{"name": "log", "foot": 6, "solid": {"capsule": Vector2(8, 50), "at": Vector2(0, -9), "angle": -12.0}, "vision": Vector2.ZERO, "big": true},
 	{"name": "boulder", "foot": 3, "solid": {"ellipse": Vector2(17, 6), "at": Vector2(0, -5)}, "vision": Vector2(15, 5), "vision_at": Vector2(0, -5), "big": true},
 	{"name": "mossy_rock", "foot": 2, "solid": {"ellipse": Vector2(10, 4), "at": Vector2(0, -4)}, "vision": Vector2.ZERO, "big": true},
 	{"name": "fern_a", "foot": 2, "solid": {}, "vision": Vector2.ZERO, "big": false, "vary": {"sway": 0.6, "bend": 1.0}},
@@ -59,6 +59,18 @@ const PROPS := [
 		"solid": {"capsule": Vector2(6, 94), "at": Vector2(0, -5)}},
 	{"name": "pebble", "foot": 1, "solid": {}, "vision": Vector2.ZERO, "big": false},
 	{"name": "stick", "foot": 2, "solid": {}, "vision": Vector2.ZERO, "big": false},
+	# Copper ore node (mined with the pickaxe, scripts/mining.gd). Own material:
+	# the shared prop shader with the ore gleam turned on.
+	{"name": "copper_node", "foot": 4, "solid": {"ellipse": Vector2(22, 7), "at": Vector2(0, -6)}, "vision": Vector2(20, 6), "vision_at": Vector2(0, -6), "big": true,
+		"material": "res://assets/props/copper_material.tres",
+		"vary": {"hue_variance": 0.0, "saturation_variance": 0.05, "brightness_variance": 0.06}},
+	{"name": "copper_node_small", "foot": 3, "solid": {"ellipse": Vector2(15, 5), "at": Vector2(-1, -5)}, "vision": Vector2(13, 4), "vision_at": Vector2(-1, -5), "big": true,
+		"material": "res://assets/props/copper_material.tres",
+		"vary": {"hue_variance": 0.0, "saturation_variance": 0.05, "brightness_variance": 0.06}},
+	# Stone nodes (mined with the pickaxe for stone, scripts/mining.gd): placed in clusters.
+	{"name": "stone_node_a", "foot": 5, "solid": {"ellipse": Vector2(38, 9), "at": Vector2(0, -8)}, "vision": Vector2(34, 8), "vision_at": Vector2(0, -8), "big": true, "vary": {"hue_variance": 0.0, "saturation_variance": 0.06, "brightness_variance": 0.08}},
+	{"name": "stone_node_b", "foot": 5, "solid": {"ellipse": Vector2(31, 9), "at": Vector2(-3, -8)}, "vision": Vector2(27, 8), "vision_at": Vector2(-3, -8), "big": true, "vary": {"hue_variance": 0.0, "saturation_variance": 0.06, "brightness_variance": 0.08}},
+	{"name": "stone_node_c", "foot": 4, "solid": {"ellipse": Vector2(22, 7), "at": Vector2(0, -6)}, "vision": Vector2(20, 6), "vision_at": Vector2(0, -6), "big": true, "vary": {"hue_variance": 0.0, "saturation_variance": 0.06, "brightness_variance": 0.08}},
 ]
 const PROP_CELL := 8          # grid used when painting props (fine, so small props don't look gridded)
 
@@ -81,7 +93,8 @@ func _initialize() -> void:
 	var scene_paths := []
 	for p in PROPS:
 		var path := "res://assets/props/%s.tscn" % p.name
-		ResourceSaver.save(_make_prop(p, varied), path)
+		var mat: Material = load(p.material) if p.has("material") else varied
+		ResourceSaver.save(_make_prop(p, mat), path)
 		scene_paths.append(path)
 
 	# --- props tileset (scene collection) ---------------------------------

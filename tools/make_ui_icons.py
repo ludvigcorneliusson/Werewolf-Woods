@@ -54,7 +54,8 @@ def draw(art, pal):
     return im
 
 
-draw(AXE, G).save(f'{P}/assets/ui/axe.png')
+# assets/ui/axe.png now comes from tools/make_item_icons.py (the user's axe art).
+# draw(AXE, G).save(f'{P}/assets/ui/axe.png')
 heart_pal = {'o': dark, 'r': (196, 52, 46), 'd': (140, 32, 34), 'h': (240, 140, 120)}
 draw(HEART, heart_pal).save(f'{P}/assets/ui/heart.png')
 

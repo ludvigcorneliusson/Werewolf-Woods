@@ -16,6 +16,7 @@ var inventory: Node
 var hud: Node
 var enabled := true
 var reach := 30.0                 # world px from the feet
+var interact_reach := 52.0        # fires and torches (they're solid, so a bit further)
 var lifetime := 30.0              # seconds a dropped item stays on the ground (0 = forever)
 
 var _grid := {}                   # Vector2i cell -> Array of prop nodes that are items
@@ -35,7 +36,7 @@ func _process(_delta: float) -> void:
 		return
 	_target = _nearest()
 	if _target:
-		var h := _height(_target)
+		var h: float = float(_target.get("prompt_height")) if _target.is_in_group("interactables") else _height(_target)
 		hud.show_prompt(_target.global_position + Vector2(0, -h - 12))
 	else:
 		hud.show_prompt(null)
@@ -44,6 +45,10 @@ func _process(_delta: float) -> void:
 ## E pressed: pick up the nearest item (if there's room in the backpack).
 func try_pick() -> void:
 	if _target == null or not is_instance_valid(_target):
+		return
+	if _target.is_in_group("interactables"):
+		var what: String = _target.call("interact")
+		hud.note(what, _target.global_position + Vector2(0, -float(_target.get("prompt_height")) - 16))
 		return
 	var id := _item_of(_target)
 	if id == "":
@@ -75,6 +80,8 @@ func spawn_drop(id: String, at: Vector2, from: Variant = null) -> Node2D:
 	var sz: Vector2 = item.world.get_size()
 	s.offset = Vector2(-floorf(sz.x / 2.0), -sz.y + 2)
 	s.material = VARIED_MATERIAL                     # darkened at night like the props
+	if item.get("gleam", false):
+		s.material = preload("res://assets/props/copper_material.tres")   # ore glints
 	s.self_modulate = Color(0.5, 0.5, 0.5, 0.5)       # = no colour change, no sway
 	s.flip_h = randf() < 0.5
 	n.add_child(s)
@@ -111,6 +118,12 @@ func _nearest() -> Node2D:
 	var best_d := reach
 	for n in get_tree().get_nodes_in_group(GROUP):
 		var d := _dist(n as Node2D, feet)
+		if d < best_d:
+			best_d = d
+			best = n
+	# Fires and torches you can put out / light (scripts/campfire.gd).
+	for n in get_tree().get_nodes_in_group("interactables"):
+		var d := _dist(n as Node2D, feet) * reach / interact_reach   # compared on the same scale
 		if d < best_d:
 			best_d = d
 			best = n

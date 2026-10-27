@@ -39,7 +39,7 @@ const DROPS := {"pine_tall.png": [2, 2, 3], "pine_dark.png": [1, 1, 2],
 		"dead_pine.png": [1, 2, 4], "dead_tree.png": [1, 2, 4]}
 var hits_to_fell := 4             # living pines
 var dead_hits_to_fell := 2        # dead trees are dry and brittle
-var stump_hits := 3               # hits to chop out a stump
+var stump_hits := 0               # hits to chop out a stump (0 = as many as a living tree)
 var hit_radius := 13.0            # world px around the blade
 var damage := 1.0                 # how many "hits" one swing counts as
 var hits_saved := 0               # Heavy Blade: every tree and stump needs this many fewer hits (min 1)
@@ -47,7 +47,9 @@ var volume_db := -4.0
 var fall_time := 1.1              # seconds for a tree to topple
 var face_delay := 0.3             # split trees: seconds into the fall before the cut face shows
 
-var _hits := {}                   # tree instance id -> hits so far
+var _hits := {}                   # tree instance id (stumps: "stump@x,y") -> hits so far
+var _pending_clear := {}          # stump key -> true: chopped through while its tree was still falling
+var _pending_shake := {}          # stump key -> true: hit while its tree was falling (no stump to wobble yet)
 var _chop_sound: AudioStream
 var _fall_sound: AudioStream
 
@@ -64,15 +66,30 @@ func on_chop_hit(point: Vector2, side: int) -> void:
 	var tree := _tree_at(point)
 	if tree == null:
 		return
-	var id := tree.get_instance_id()
+	var img := _image(tree)
+	# A tree that's already falling is its stump now: hittable straight away.
+	var is_stump := img in STUMPS or tree.has_meta("felling")
+	# Stump hits are kept by position, so they carry over from the falling tree
+	# to the stump prop that replaces it.
+	var id: Variant = _stump_key(tree) if is_stump else tree.get_instance_id()
 	_hits[id] = float(_hits.get(id, 0.0)) + damage
 	_sound(_chop_sound, point, randf_range(0.92, 1.08))
 	_chips(point, side)
-	var img := _image(tree)
-	if img in STUMPS:
-		if _hits[id] >= maxi(stump_hits - hits_saved, 1) - 0.001:
-			_hits.erase(id)
-			_clear_stump(tree)
+	if is_stump:
+		if _hits[id] >= _stump_needed() - 0.001:
+			if tree.has_meta("felling"):
+				_pending_clear[id] = true       # cleared as soon as the stump prop is in
+			else:
+				_hits.erase(id)
+				_clear_stump(tree)
+		elif tree.has_meta("felling"):
+			# Tree still going down: wobble the stump that's already showing
+			# (split pines), or the stump prop as soon as it's in.
+			var stump := tree.get_node_or_null("Stump") as Node2D
+			if stump:
+				_shake_sprite(stump, tree)
+			else:
+				_pending_shake[id] = true
 		else:
 			_shake(tree)
 		return
@@ -83,6 +100,16 @@ func on_chop_hit(point: Vector2, side: int) -> void:
 		_fell(tree, side)
 	else:
 		_shake(tree)
+
+
+func _stump_key(n: Node2D) -> String:
+	return "stump@%d,%d" % [roundi(n.global_position.x), roundi(n.global_position.y)]
+
+
+## Hits to chop out a stump: as many as a living tree (Stump Hits overrides),
+## minus Heavy Blade, at least 1.
+func _stump_needed() -> int:
+	return maxi((stump_hits if stump_hits > 0 else hits_to_fell) - hits_saved, 1)
 
 
 ## The tree whose trunk (its collision Body) is under the blade, or null.
@@ -103,7 +130,7 @@ func _tree_at(point: Vector2) -> Node2D:
 		if body == null or body.name != "Body":
 			continue
 		var prop := body.get_parent() as Node2D
-		if prop == null or prop.has_meta("felling"):
+		if prop == null or prop.has_meta("clearing"):
 			continue
 		var img := _image(prop)
 		if not (img in LIVING or img in DEAD or img in STUMPS):
@@ -127,12 +154,20 @@ func _image(prop: Node) -> String:
 ## A quick side-to-side shudder of the tree art.
 func _shake(tree: Node2D) -> void:
 	var sprite := tree.get_node_or_null("Sprite") as Node2D
-	if sprite == null:
-		return
-	var px := 1.5 / maxf(tree.scale.x, 0.01)        # sprite px per world px
-	var t := tree.create_tween()
+	if sprite:
+		_shake_sprite(sprite, tree)
+
+
+## Shudders one sprite of a prop around where it rests (works for the falling
+## split pine's stump half too).
+func _shake_sprite(sprite: Node2D, prop: Node2D) -> void:
+	var px := 1.5 / maxf(absf(prop.scale.x), 0.01)  # sprite px per world px
+	if not sprite.has_meta("rest_x"):
+		sprite.set_meta("rest_x", sprite.position.x)
+	var rest: float = sprite.get_meta("rest_x")
+	var t := prop.create_tween()
 	for x in [2.0, -2.0, 1.2, -0.6, 0.0]:
-		t.tween_property(sprite, "position:x", x * px, 0.04)
+		t.tween_property(sprite, "position:x", rest + x * px, 0.04)
 
 
 ## Wood chips flying off the trunk, away from the axe.
@@ -169,11 +204,11 @@ func _fell(tree: Node2D, side: int) -> void:
 	if not spec.is_empty() and sprite:
 		_split(tree, sprite, spec)        # the stump (and its collision) stays
 	else:
-		# You can walk (and see) through it straight away.
-		for part in ["Body", "VisionBlocker"]:
-			var n := tree.get_node_or_null(part)
-			if n:
-				n.queue_free()
+		# You can see past it straight away. Its trunk (collision) stays: that's
+		# the stump now, and you can keep chopping it.
+		var vb := tree.get_node_or_null("VisionBlocker")
+		if vb:
+			vb.queue_free()
 	if sprite:
 		var t := tree.create_tween()
 		# A slow lean at first, then it goes: rotation around the foot (the origin).
@@ -281,7 +316,7 @@ func _drop_wood(tree: Node2D, side: int) -> void:
 
 ## Digs a stump out: a puff of dust, a log and twigs, and the spot is clear.
 func _clear_stump(stump: Node2D) -> void:
-	stump.set_meta("felling", true)
+	stump.set_meta("clearing", true)
 	var at := stump.global_position
 	_sound(_fall_sound, at, randf_range(1.25, 1.4))           # a shorter, higher thud
 	_dust(at + Vector2(0, -4), 22.0)
@@ -351,6 +386,8 @@ func _replace_with_stump(tree: Node2D) -> void:
 		layer.set_cell(cell, 0, Vector2i.ZERO, stump_id)
 		if not split:
 			_size_stump.call_deferred(layer, at, stump_scale)
+		_clear_if_pending.call_deferred(layer, at, _stump_key(tree))
+		_shake_if_pending.call_deferred(layer, at, _stump_key(tree))
 	else:
 		# A scene placed by hand: put a stump node in its place.
 		var stump := (load(scene_path) as PackedScene).instantiate() as Node2D
@@ -359,7 +396,48 @@ func _replace_with_stump(tree: Node2D) -> void:
 		if not split:
 			stump.scale = Vector2(stump_scale, stump_scale)
 		tree.queue_free()
+		if _pending_clear.has(_stump_key(tree)):
+			_pending_clear.erase(_stump_key(tree))
+			_hits.erase(_stump_key(tree))
+			_clear_stump.call_deferred(stump)
+		elif _pending_shake.has(_stump_key(tree)):
+			_pending_shake.erase(_stump_key(tree))
+			_shake.call_deferred(stump)
 	tree_felled.emit(tree)
+
+
+## A stump chopped through while its tree was still falling: clear it as soon
+## as the stump tile is in.
+func _clear_if_pending(layer: TileMapLayer, at: Vector2, key: String) -> void:
+	if not _pending_clear.has(key):
+		return
+	await get_tree().process_frame
+	await get_tree().process_frame
+	if not is_instance_valid(layer):
+		return
+	for c in layer.get_children():
+		if c is Node2D and c.position == at and _image(c) in STUMPS:
+			_pending_clear.erase(key)
+			_hits.erase(key)
+			_clear_stump(c)
+			return
+
+
+## A hit landed while the tree was still falling and there was no stump to
+## wobble yet: wobble the new stump tile once it's in.
+func _shake_if_pending(layer: TileMapLayer, at: Vector2, key: String) -> void:
+	if not _pending_shake.has(key) or _pending_clear.has(key):
+		_pending_shake.erase(key)
+		return
+	await get_tree().process_frame
+	await get_tree().process_frame
+	_pending_shake.erase(key)
+	if not is_instance_valid(layer):
+		return
+	for c in layer.get_children():
+		if c is Node2D and c.position == at and _image(c) in STUMPS and not c.has_meta("clearing"):
+			_shake(c)
+			return
 
 
 ## The new stump tile shows up a moment later; size it like the felled trunk.

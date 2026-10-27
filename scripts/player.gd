@@ -57,6 +57,27 @@ const CHOP_HIT_RADIUS := 13.0
 ## The axe hits (at the impact frame). point = where the blade lands (world px),
 ## side = 1 right / -1 left. main.gd passes this on to scripts/tree_chopping.gd.
 signal chop_hit(point: Vector2, side: int)
+## The pickaxe hits. Same point/side as chop_hit; main.gd passes it on to
+## scripts/mining.gd (ore nodes).
+signal mine_hit(point: Vector2, side: int)
+
+## Pickaxe swing (left click with the pickaxe), from ClipProj_H3_00021 via
+## tools/chop_from_video.py (side mine_right): rest, raise overhead (held),
+## strike down to the right (impact), hold, back up. Same keys as CHOP. Only
+## "right" exists for now: facing left plays it mirrored. Add a "left" entry
+## with its own strip and that one is used instead. (With MINE empty the
+## pickaxe falls back to MINE_PLACEHOLDER: the standing sprite leans and swings.)
+const MINE := {
+	# Filmed at 24 fps, distinct frames only; the raised pick and the strike are held.
+	"right": {"tex": preload("res://assets/characters/settler_mine_right.png"), "frames": 12,
+		"size": Vector2i(51, 52), "offset": Vector2(-23, -49), "fps": 30.0, "impact": 8,
+		"durations": {0: 0.5, 1: 2.0, 2: 2.0, 3: 2.0, 4: 4.0, 5: 3.0, 6: 2.0, 7: 1.5, 8: 6.0,
+			9: 3.0, 10: 2.0, 11: 2.0}},
+}
+## Placeholder swing timing (seconds) and lean (radians, around the feet).
+const MINE_PLACEHOLDER := {"windup": 0.3, "strike": 0.07, "recover": 0.28, "back": 0.16, "forward": 0.12}
+## Tools that swing on left click.
+const SWING_TOOLS := ["axe", "pickaxe"]
 
 const STEP_SOUND := "res://assets/sounds/footsteps/grass_step.wav"   # default footstep
 const DEFAULT_STEPS := [0.0, 0.5]
@@ -111,12 +132,18 @@ var _speed := 0.0
 ## Chopping speed (1 = as built; 1.5 = half again as fast). main.gd sets it.
 var chop_speed := 1.0
 var chopping := false
-## Tool in hand (the tools bar in hud.gd sets it). Left click chops only with the axe.
+## Tool in hand (the tools bar in hud.gd sets it). Left click swings the axe
+## (chop) or the pickaxe (mine); other tools don't swing yet.
 var held_tool := "axe"
+## Pickaxe swing speed (1 = as built).
+var mine_speed := 1.0
+var _swing_tool := ""              # the tool of the swing in progress
 ## Push from a hit (world px/s); fades out quickly. main.gd sets it when you're attacked.
 var knockback := Vector2.ZERO
 var _chop_queued := false
-var _chop_held := false            # left button held since a press in the game (not on a menu)
+var _chop_held := false
+## True while placing something you build (scripts/placer.gd): clicks place, not chop.
+var build_mode := false            # left button held since a press in the game (not on a menu)
 var _side := 1                     # last sideways facing: 1 right, -1 left
 var _offsets := {}
 
@@ -181,7 +208,7 @@ func _physics_process(_delta: float) -> void:
 		dir = Input.get_vector("move_left", "move_right", "move_up", "move_down")
 	# Holding the button keeps chopping: the next swing starts as soon as one ends.
 	if _chop_held:
-		if Input.is_action_pressed("chop") and input_enabled and held_tool == "axe":
+		if Input.is_action_pressed("chop") and input_enabled and held_tool in SWING_TOOLS and not build_mode:
 			if not chopping:
 				_chop_queued = true
 		else:
@@ -221,7 +248,8 @@ func _process(delta: float) -> void:
 
 func _unhandled_input(event: InputEvent) -> void:
 	# Clicks on menus/HUD never get here (the GUI takes them first).
-	if is_local and not ai_controlled and input_enabled and held_tool == "axe" and event.is_action_pressed("chop"):
+	if is_local and not ai_controlled and input_enabled and held_tool in SWING_TOOLS and not build_mode \
+			and event.is_action_pressed("chop"):
 		_chop_queued = true
 		_chop_held = true
 
@@ -231,6 +259,18 @@ func _unhandled_input(event: InputEvent) -> void:
 func _start_chop() -> void:
 	chopping = true
 	_moving = false
+	_swing_tool = held_tool
+	if held_tool == "pickaxe":
+		if MINE.is_empty():
+			_start_mine_placeholder()
+			return
+		var own_left := _side < 0 and MINE.has("left")
+		sprite.play("mine_left" if own_left else "mine_right")
+		sprite.flip_h = _side < 0 and not own_left        # no left strip yet: mirror the right one
+		sprite.speed_scale = mine_speed
+		sprite.frame = 0
+		_apply_flip_offset()
+		return
 	sprite.flip_h = false                 # each side has its own strip
 	sprite.speed_scale = chop_speed
 	sprite.play("chop_right" if _side > 0 else "chop_left")
@@ -238,17 +278,50 @@ func _start_chop() -> void:
 	_apply_flip_offset()
 
 
+## No pickaxe art yet: face the swing side, lean back, swing forward (the hit),
+## straighten up. Rotation is around the feet (the sprite's origin).
+func _start_mine_placeholder() -> void:
+	facing = Vector2(_side, 0.0)
+	_update_sprite()
+	var m := MINE_PLACEHOLDER
+	var k := 1.0 / maxf(mine_speed, 0.05)
+	var t := create_tween()
+	t.tween_property(sprite, "rotation", -m.back * _side, m.windup * k).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_QUAD)
+	t.tween_property(sprite, "rotation", m.forward * _side, m.strike * k).set_ease(Tween.EASE_IN)
+	t.tween_callback(_emit_hit)
+	t.tween_property(sprite, "rotation", 0.0, m.recover * k).set_ease(Tween.EASE_IN_OUT).set_trans(Tween.TRANS_SINE)
+	t.tween_callback(_end_swing)
+
+
+func _emit_hit() -> void:
+	var point := global_position + Vector2(CHOP_REACH.x * _side, CHOP_REACH.y)
+	if _swing_tool == "pickaxe":
+		mine_hit.emit(point, _side)
+	else:
+		chop_hit.emit(point, _side)
+
+
+func _end_swing() -> void:
+	chopping = false
+	sprite.rotation = 0.0
+	facing = Vector2(_side, 0.0)
+	_update_sprite()
+
+
 func _on_frame_changed() -> void:
-	if chopping and sprite.animation.begins_with("chop_") \
-			and sprite.frame == CHOP[sprite.animation.trim_prefix("chop_")].impact:
-		chop_hit.emit(global_position + Vector2(CHOP_REACH.x * _side, CHOP_REACH.y), _side)
+	if not chopping:
+		return
+	var anim := String(sprite.animation)
+	for prefix in ["chop_", "mine_"]:
+		if anim.begins_with(prefix):
+			var table: Dictionary = CHOP if prefix == "chop_" else MINE
+			if sprite.frame == table[anim.trim_prefix(prefix)].impact:
+				_emit_hit()
 
 
 func _on_animation_finished() -> void:
-	if sprite.animation.begins_with("chop_"):
-		chopping = false
-		facing = Vector2(_side, 0.0)
-		_update_sprite()
+	if sprite.animation.begins_with("chop_") or sprite.animation.begins_with("mine_"):
+		_end_swing()
 
 
 # --- footsteps ----------------------------------------------------------------
@@ -404,9 +477,14 @@ func _build_frames() -> SpriteFrames:
 			sf.add_frame(run, at)
 		_offsets[run] = r.offset
 
+	var swings := []
 	for side: String in CHOP:
-		var c: Dictionary = CHOP[side]
-		var anim := "chop_" + side
+		swings.append(["chop_" + side, CHOP[side]])
+	for side: String in MINE:
+		swings.append(["mine_" + side, MINE[side]])
+	for sw in swings:
+		var c: Dictionary = sw[1]
+		var anim: String = sw[0]
 		sf.add_animation(anim)
 		sf.set_animation_loop(anim, false)
 		sf.set_animation_speed(anim, c.fps)

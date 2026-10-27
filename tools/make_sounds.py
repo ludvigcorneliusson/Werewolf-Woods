@@ -1,6 +1,8 @@
 """Synthesizes the placeholder chopping sounds in assets/sounds/:
   chop.wav       - a woody knock for each axe hit
   tree_fall.wav  - a deep thud with a leafy rustle, played when a tree lands
+  mine_hit.wav   - pick on rock: a stony knock with a short metallic ring
+  rock_break.wav - an ore node crumbling: rubble rattling over a low thud
 Usage: python3 tools/make_sounds.py <project folder>"""
 import sys, wave
 import numpy as np
@@ -37,4 +39,23 @@ thud = np.sin(2*np.pi*52*t) * np.exp(-t*7) * 1.2 + np.sin(2*np.pi*88*t) * np.exp
 crunch = lowpass(rng.standard_normal(len(t)), 0.5) * np.exp(-t*30) * 0.7
 rustle = lowpass(rng.standard_normal(len(t)), 0.22) * np.exp(-t*4.5) * 0.45
 save(f'{P}/assets/sounds/tree_fall.wav', thud + crunch + rustle)
+# Pick on rock: hard click, dull stone knock, short bright ring (inharmonic partials).
+t = np.arange(int(sr * 0.4)) / sr
+ring = sum(np.sin(2*np.pi*f*t) * np.exp(-t*d) * a for f, d, a in
+           [(1870, 22, 0.5), (2710, 30, 0.35), (4130, 45, 0.25), (5390, 60, 0.15)])
+stone = np.sin(2*np.pi*240*t) * np.exp(-t*55) * 0.8 + lowpass(rng.standard_normal(len(t)), 0.6) * np.exp(-t*80) * 0.7
+click = rng.standard_normal(len(t)) * np.exp(-t*1500) * 0.9
+save(f'{P}/assets/sounds/mine_hit.wav', ring + stone + click)
+
+# Rock crumbling: a low thud, then many small stone knocks rattling down.
+t = np.arange(int(sr * 1.0)) / sr
+x = np.sin(2*np.pi*60*t) * np.exp(-t*9) * 1.0 + lowpass(rng.standard_normal(len(t)), 0.45) * np.exp(-t*12) * 0.6
+for k in range(38):
+    t0 = rng.uniform(0.0, 0.6) ** 1.6
+    i0 = int(t0 * sr)
+    tt = t[: len(t) - i0]
+    f = rng.uniform(500, 1600)
+    x[i0:] += (np.sin(2*np.pi*f*tt) * np.exp(-tt*rng.uniform(60, 120)) + rng.standard_normal(len(tt)) * np.exp(-tt*400) * 0.6) \
+        * rng.uniform(0.15, 0.4) * np.exp(-t0*2.5)
+save(f'{P}/assets/sounds/rock_break.wav', x)
 print('sounds written')

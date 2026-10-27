@@ -59,6 +59,11 @@ const ABSORB := {
 	"bush_big.png": [30.0, 0.35, 0.0, 0.0],
 	"bush_small.png": [18.0, 0.25, 0.0, 0.0],
 	"boulder.png": [16.0, 0.8, 0.0, 0.0],
+	"copper_node.png": [22.0, 0.8, 0.0, 0.0],
+	"copper_node_small.png": [15.0, 0.6, 0.0, 0.0],
+	"stone_node_a.png": [36.0, 0.75, 0.0, 0.0],
+	"stone_node_b.png": [30.0, 0.8, 0.0, 0.0],
+	"stone_node_c.png": [22.0, 0.8, 0.0, 0.0],
 	"mossy_rock.png": [10.0, 0.35, 0.0, 0.0],
 	"stump.png": [12.0, 0.35, 0.0, 0.0],
 	"stump_log.png": [26.0, 0.25, 0.0, 0.0],
@@ -72,7 +77,8 @@ const BASE_AT := {
 	"pine_tall.png": Vector2(0, -6), "pine_dark.png": Vector2(0, -3),
 	"pine_tall_stump.png": Vector2(0, -6),
 	"dead_pine.png": Vector2(-1, -7), "dead_tree.png": Vector2(2, -6),
-	"stump.png": Vector2(0, -7), "boulder.png": Vector2(0, -5), "mossy_rock.png": Vector2(0, -4),
+	"stump.png": Vector2(0, -7), "boulder.png": Vector2(0, -5), "copper_node.png": Vector2(0, -6), "copper_node_small.png": Vector2(-1, -5),
+	"stone_node_a.png": Vector2(0, -8), "stone_node_b.png": Vector2(-3, -8), "stone_node_c.png": Vector2(0, -6), "mossy_rock.png": Vector2(0, -4),
 }
 
 # Settings (main.gd sets these)

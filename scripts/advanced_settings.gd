@@ -1,7 +1,8 @@
 extends Control
-## Advanced settings panel (Esc menu > Advanced settings). Game-world tuning
-## while you play: map/forest, weather, day & night, fog & vision, werewolf AI
-## and wind. The game keeps running behind it.
+## Settings panel, opened from the main menu (Settings) and from the Esc menu
+## (Settings). General tab: display, difficulty, volume. Then game-world tuning:
+## map/forest, weather, day & night, fog & vision, werewolf AI and wind. In a
+## round the game keeps running behind it.
 ##
 ## The controls are built from the settings themselves: each entry in SECTIONS
 ## names a property on Main (scripts/main.gd) or on the WorldBuilder node, and
@@ -11,7 +12,8 @@ extends Control
 ##
 ## Changes apply immediately (Main's setters push them to the game), except
 ## map/forest settings, which take effect when you press Regenerate (restarts
-## the round with a new forest). Everything is saved (game_settings.gd,
+## the round with a new forest; from the main menu the forest is rebuilt when
+## you leave Settings). Everything is saved (game_settings.gd,
 ## "advanced" section) and re-applied every round; Reset puts back the values
 ## from main.tscn.
 
@@ -26,14 +28,15 @@ const SECTIONS := [
 		"clearing", "clearing_fade", "tree_spacing", "tree_jitter", "forest_fill", "patch_frequency",
 		"tall_pines", "dark_pines", "dead_tree_share", "trunk_gap",
 		"stumps", "logs", "boulders", "mossy_rocks", "ferns", "grass_tufts", "small_bushes", "big_bushes",
-		"fallen_trees", "stump_logs", "mushroom_clusters", "pebbles", "sticks", "campfire_space",
+		"fallen_trees", "stump_logs", "mushroom_clusters", "pebbles", "sticks", "sticks_near_trees", "stick_tree_distance", "ore_nodes", "small_ore_nodes", "small_ore_in_stone", "ore_near_boulders", "stone_clusters", "stone_cluster_size", "stone_cluster_radius", "stone_cluster_pebbles", "campfire_space",
 		"painted_tree_clearance", "painted_clearance", "keep_painted_visible", "rabbits"]],
 	["Weather", "main", [
 		"weather_enabled", "rain_chance", "clear_spell", "rain_spell", "rain_fade",
 		"rain_drops", "rain_splashes", "rain_color", "rain_speed", "rain_slant", "rain_volume",
 		"rain_tint", "rain_wind_boost", "rain_footprint_life", "rain_hearing"]],
 	["Day & Night", "main", [
-		"day_length", "dusk_length", "day_tint", "dusk_tint", "campfire_day_glow"]],
+		"day_length", "dusk_length", "day_tint", "dusk_tint", "campfire_day_glow",
+		"night_eyes", "eyes_glow", "eyes_close_distance"]],
 	["Fog & Vision", "main", [
 		"fog_enabled", "fog_color", "fog_darkness", "vision_radius", "fog_start", "fog_density",
 		"vision_brightness", "vision_tint", "vision_squash", "trunk_shade", "canopy_shade",
@@ -41,13 +44,13 @@ const SECTIONS := [
 	["Experience", "main", [
 		"xp_first_level", "xp_curve", "xp_tall_pine", "xp_small_pine", "xp_dead_tree",
 		"upgrade_choices", "chop_speed_per_level", "run_speed_per_level", "hits_saved_per_level",
-		"rare_chance", "epic_chance", "rare_power", "epic_power", "xp_stump", "stump_hits"]],
+		"rare_chance", "epic_chance", "rare_power", "epic_power", "xp_stump", "stump_hits", "xp_ore", "xp_small_ore", "xp_stone"]],
 	["Werewolf & Wind", "main", [
 		"ai_werewolf", "werewolf_spawns_at", "werewolf_spawn_distance", "werewolf_sense", "werewolf_lose",
 		"werewolf_walk_speed", "werewolf_sprint_speed",
 		"wind_enabled", "wind_strength", "wind_speed", "wind_lean", "wave_length",
-		"tree_hits", "dead_tree_hits", "chop_speed",
-		"max_health", "werewolf_damage", "werewolf_bite_interval", "health_regen", "regen_delay", "drop_lifetime"]],
+		"tree_hits", "dead_tree_hits", "chop_speed", "ore_hits", "small_ore_hits", "stone_hits", "mine_speed",
+		"max_health", "werewolf_damage", "werewolf_bite_interval", "health_regen", "regen_delay", "drop_lifetime", "build_reach"]],
 ]
 
 ## Short explanations shown as tooltips (the @export doc comments are not
@@ -64,6 +67,18 @@ const TIPS := {
 	"clearing": "Radius of the open clearing around the campfire.",
 	"dead_tree_share": "Share of trees that are dead.",
 	"trunk_gap": "Minimum gap between tree trunks.",
+	"ore_nodes": "Copper ore nodes per 1000 x 1000 px of forest (a Medium map is about 110 of those).",
+	"ore_near_boulders": "Share of ore nodes placed right next to a boulder.",
+	"ore_hits": "Pickaxe hits to break an ore node.",
+	"stone_hits": "Pickaxe hits to break a stone node.",
+	"small_ore_hits": "Pickaxe hits to break a small copper deposit.",
+	"small_ore_nodes": "Small copper deposits per 1000 x 1000 px of forest.",
+	"small_ore_in_stone": "Share of small copper deposits placed inside stone clusters.",
+	"stone_clusters": "Clusters of stone nodes per 1000 x 1000 px of forest.",
+	"stone_cluster_size": "Stone nodes per cluster: min / max.",
+	"stone_cluster_pebbles": "Loose pebbles around each cluster: min / max.",
+	"sticks_near_trees": "Share of sticks lying near a tree (the rest anywhere on the map).",
+	"stick_tree_distance": "How far from the trunk's edge those sticks lie: min / max px.",
 	"painted_tree_clearance": "Generated trees stay this far from props you painted in World/Placed.",
 	"painted_clearance": "Other generated props stay this far from your painted props.",
 	"rabbits": "Rabbits per million square px (Medium map = about 110 million). They flee from the settler and the werewolf.",
@@ -74,6 +89,9 @@ const TIPS := {
 	"rain_footprint_life": "Footprints last this fraction of their normal time in full rain.",
 	"rain_hearing": "The werewolf's steps carry this fraction of their normal distance in full rain.",
 	"rain_wind_boost": "Extra wind in the trees during rain (1 = double).",
+	"night_eyes": "Tiny glowing animal eyes in a few trees at night.",
+	"eyes_glow": "Glow around each eye (0 = just the eyes).",
+	"eyes_close_distance": "The eyes shut when you come this close to their tree.",
 	"campfire_day_glow": "Campfire glow in daylight (1 = full night glow).",
 	"vision_radius": "How far you can see at night.",
 	"fog_start": "Where the darkness starts fading in (share of the vision radius).",
@@ -85,13 +103,19 @@ const TIPS := {
 }
 
 var main: Node
+## Opened from the main menu (no round running): map changes are applied by
+## rebuilding the forest behind the menu when Settings is closed.
+var in_main_menu := false
 var _builder: Node
 var _regen_note: Label
 var _tabs: TabContainer
+var _seed_box: SpinBox
+var _map_dirty := false
 
 
-func setup(p_main: Node) -> void:
+func setup(p_main: Node, from_main_menu := false) -> void:
 	main = p_main
+	in_main_menu = from_main_menu
 	_builder = main.get_node_or_null("WorldBuilder")
 
 
@@ -109,10 +133,12 @@ func _ready() -> void:
 	box.add_theme_constant_override("separation", 10)
 	panel.add_child(box)
 
-	box.add_child(StartMenu._label("Advanced settings", 34, StartMenu.TITLE_COLOR))
+	box.add_child(StartMenu._label("Settings", 34, StartMenu.TITLE_COLOR))
 	_tabs = TabContainer.new()
 	_tabs.custom_minimum_size = Vector2(820, 470)
 	box.add_child(_tabs)
+
+	_general(_tab("General"))
 
 	for sec in SECTIONS:
 		var target := _target(sec[1])
@@ -135,7 +161,7 @@ func _ready() -> void:
 	box.add_child(bottom)
 	var reset := StartMenu._button("Reset to defaults", true)
 	reset.custom_minimum_size.x = 240
-	reset.tooltip_text = "Put every advanced setting back to the project's values (main.tscn)."
+	reset.tooltip_text = "Put every world setting back to the project's values (main.tscn). General settings are kept."
 	reset.pressed.connect(_reset_all)
 	bottom.add_child(reset)
 	var close_btn := StartMenu._button("Back", true)
@@ -145,15 +171,74 @@ func _ready() -> void:
 
 func open() -> void:
 	visible = true
+	_map_dirty = false
+	if _seed_box:
+		_seed_box.set_value_no_signal(GameSettings.map_seed)   # may have been rolled for this round
 	_refresh()
 
 
 func close() -> void:
 	if not visible:
 		return
+	if _seed_box and _seed_box.get_line_edit().has_focus():
+		_seed_box.apply()                                    # take a seed still being typed
 	visible = false
 	GameSettings.save_settings()
+	if in_main_menu and _map_dirty and main and main.has_method("_on_map_settings_changed"):
+		main._on_map_settings_changed()                      # rebuild the forest behind the menu
+		return
 	back.emit()
+
+
+## General tab: display, difficulty and volume (the player's own settings).
+func _general(grid: GridContainer) -> void:
+	var disp := _choice(["Fullscreen", "Windowed"], "Fullscreen" if GameSettings.fullscreen else "Windowed")
+	disp.item_selected.connect(func(i):
+		GameSettings.fullscreen = i == 0
+		GameSettings.apply_display(get_window()))
+	_row(grid, "Display", disp, "F11 also switches.")
+	_controls["general.display"] = func(): disp.select(0 if GameSettings.fullscreen else 1)
+
+	var diff := _choice(GameSettings.DIFFICULTIES.keys(), GameSettings.difficulty)
+	for i in diff.item_count:
+		var n: String = diff.get_item_text(i)
+		diff.set_item_tooltip(i, "Werewolf speed x%.2f" % GameSettings.DIFFICULTIES[n])
+	diff.item_selected.connect(func(i):
+		GameSettings.difficulty = diff.get_item_text(i)
+		if main and main.has_method("_apply_werewolf"):
+			main._apply_werewolf())                      # a werewolf already out speeds up/down
+	_row(grid, "Difficulty", diff, "How fast the AI werewolf is.")
+
+	var vol := _percent_slider(GameSettings.volume)
+	vol.value_changed.connect(func(x):
+		GameSettings.volume = x / 100.0
+		GameSettings.apply_volume())
+	_row(grid, "Volume", vol)
+	var mus := _percent_slider(GameSettings.music_volume)
+	mus.value_changed.connect(func(x):
+		GameSettings.music_volume = x / 100.0
+		GameSettings.apply_volume())
+	_row(grid, "Music", mus, "Music volume, on top of the main volume.")
+
+
+func _percent_slider(value: float) -> HSlider:
+	var slider := HSlider.new()
+	slider.min_value = 0
+	slider.max_value = 100
+	slider.step = 1
+	slider.custom_minimum_size.y = 28
+	slider.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	slider.value = round(value * 100.0)
+	return slider
+
+
+func _choice(items: Array, selected: String) -> OptionButton:
+	var o := OptionButton.new()
+	for it in items:
+		o.add_item(it)
+		if it == selected:
+			o.select(o.item_count - 1)
+	return o
 
 
 # --- building the tabs ----------------------------------------------------------
@@ -206,6 +291,7 @@ func _map_header(grid: GridContainer) -> void:
 	var size_opt := OptionButton.new()
 	for n in GameSettings.MAP_SIZES.keys():
 		size_opt.add_item(n)
+		size_opt.set_item_tooltip(size_opt.item_count - 1, "%d x %d tiles" % [GameSettings.MAP_SIZES[n], GameSettings.MAP_SIZES[n]])
 		if n == GameSettings.map_size:
 			size_opt.select(size_opt.item_count - 1)
 	size_opt.item_selected.connect(func(i):
@@ -214,7 +300,9 @@ func _map_header(grid: GridContainer) -> void:
 	_row(grid, "Map size", size_opt)
 
 	var seed_row := HBoxContainer.new()
+	seed_row.add_theme_constant_override("separation", 8)
 	var seed_box := SpinBox.new()
+	_seed_box = seed_box
 	seed_box.max_value = 999999
 	seed_box.rounded = true
 	seed_box.value = GameSettings.map_seed
@@ -229,7 +317,7 @@ func _map_header(grid: GridContainer) -> void:
 		GameSettings.randomize_seed()
 		seed_box.value = GameSettings.map_seed)
 	seed_row.add_child(dice)
-	_row(grid, "Map seed", seed_row)
+	_row(grid, "Map seed", seed_row, "Same seed + same map size = same forest (share it with friends).")
 
 	var every := CheckBox.new()
 	every.text = "New random seed every round"
@@ -251,11 +339,16 @@ func _map_header(grid: GridContainer) -> void:
 	col.add_child(regen)
 	col.add_child(_regen_note)
 	_row(grid, "", col)
+	if in_main_menu:
+		regen.visible = false                            # nothing to restart yet
+		_regen_note.text = "Map changes apply when you close Settings."
 
 
 func _needs_regen() -> void:
+	_map_dirty = true
 	if _regen_note:
-		_regen_note.text = "Changed - press Regenerate map to build the new forest."
+		_regen_note.text = "Changed - the new forest is built when you close Settings." if in_main_menu \
+				else "Changed - press Regenerate map to build the new forest."
 		_regen_note.add_theme_color_override("font_color", StartMenu.ACCENT)
 
 
@@ -360,8 +453,10 @@ func _refresh() -> void:
 func _reset_all() -> void:
 	main.reset_advanced_settings()
 	_refresh()
+	_map_dirty = true
 	if _regen_note:
-		_regen_note.text = "Reset - press Regenerate map to rebuild the forest with the defaults."
+		_regen_note.text = "Reset - the forest is rebuilt when you close Settings." if in_main_menu \
+				else "Reset - press Regenerate map to rebuild the forest with the defaults."
 
 
 func _target(tname: String) -> Object:
@@ -408,7 +503,8 @@ func _theme() -> Theme:
 	var t: Theme = StartMenu._theme()
 	t.default_font_size = 17
 	t.set_color("font_color", "Label", StartMenu.TEXT_COLOR)
-	for st in ["tab_selected", "tab_hovered", "tab_unselected", "tab_focus"]:
+	t.set_stylebox("tab_focus", "TabContainer", StyleBoxEmpty.new())     # highlight on hover only
+	for st in ["tab_selected", "tab_hovered", "tab_unselected"]:
 		var on: bool = st != "tab_unselected"
 		var sb := StartMenu._box(Color(0.16, 0.20, 0.15, 0.95) if on else Color(0.08, 0.10, 0.09, 0.92),
 				StartMenu.ACCENT if st == "tab_selected" else Color(0.32, 0.36, 0.30))
