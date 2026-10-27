@@ -4,10 +4,10 @@
 [ext_resource type="Texture2D" path="res://assets/props/wall_end.png" id="2_tex"]
 
 [sub_resource type="OccluderPolygon2D" id="OccluderPolygon2D_w"]
-polygon = PackedVector2Array(-6.00, 6.00, -6.00, -6.00, 6.00, -6.00, 6.00, 6.00)
+polygon = PackedVector2Array(6.00, -9.00, 6.00, 9.00, -6.00, 9.00, -6.00, -9.00)
 
 [node name="WallEnd" type="Node2D" groups=["walls"]]
-metadata/wall_ends = [Vector2(0, 9), Vector2(0, -9)]
+metadata/wall_ends = [Vector2(0, -12), Vector2(0, 12)]
 
 [node name="Sprite" type="Sprite2D" parent="."]
 self_modulate = Color(0.5, 0.5, 0.5, 0.5)
@@ -20,7 +20,7 @@ offset = Vector2(-8, -61)
 [node name="Body" type="StaticBody2D" parent="."]
 
 [node name="Shape" type="CollisionPolygon2D" parent="Body"]
-polygon = PackedVector2Array(-6.00, 6.00, -6.00, -6.00, 6.00, -6.00, 6.00, 6.00)
+polygon = PackedVector2Array(6.00, -9.00, 6.00, 9.00, -6.00, 9.00, -6.00, -9.00)
 
 [node name="VisionBlocker" type="LightOccluder2D" parent="."]
 occluder = SubResource("OccluderPolygon2D_w")

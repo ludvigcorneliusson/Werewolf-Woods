@@ -3,7 +3,6 @@
   tree_fall.wav  - a deep thud with a leafy rustle, played when a tree lands
   mine_hit.wav   - pick on rock: a stony knock with a short metallic ring
   rock_break.wav - an ore node crumbling: rubble rattling over a low thud
-  swing_axe / swing_pickaxe / swing_spade / swing_can.wav - tool swing whooshes
 Usage: python3 tools/make_sounds.py <project folder>"""
 import sys, wave
 import numpy as np
@@ -86,31 +85,6 @@ def save_at(path, x, peak):
 # (Footstep sounds were removed - the synthesized ones did not work out.)
 
 
-# Swing whooshes: noise through a band-pass sweeping up (the tool speeding
-# up), loudest just before the hit. Per tool: (seconds, start Hz, end Hz, Q, extra).
-def whoosh(dur, f_a, f_b, q, seed):
-    r = np.random.default_rng(seed)
-    t = np.arange(int(sr * dur)) / sr
-    u = t / dur
-    f0 = f_a * (f_b / f_a) ** (u ** 1.6)
-    x = biquad_bp(r.standard_normal(len(t)), f0, q)
-    env = np.sin(np.pi * np.clip(u, 0, 1) ** 1.8) ** 2     # swells, peaks late, dies fast
-    return x * env, t
+# (Tool swing whooshes were removed.)
 
-x, t = whoosh(0.30, 450, 1500, 1.2, 11)
-save_at(f'{P}/assets/sounds/swing_axe.wav', x, 0.5)
-x, t = whoosh(0.36, 260, 900, 1.0, 12)                     # heavier pick: lower, longer
-x += lowpass(np.random.default_rng(13).standard_normal(len(t)), 0.05) * np.sin(np.pi * t / t[-1]) ** 3 * 2.0
-save_at(f'{P}/assets/sounds/swing_pickaxe.wav', x, 0.55)
-x, t = whoosh(0.24, 700, 2000, 1.4, 14)                    # spade: quick, lighter
-save_at(f'{P}/assets/sounds/swing_spade.wav', x, 0.4)
-x, t = whoosh(0.32, 380, 800, 0.9, 15)                     # can: soft swish + water sloshing inside
-r = np.random.default_rng(16)
-for k in range(9):
-    t0 = r.uniform(0.08, 0.26)
-    i0 = int(t0 * sr)
-    tt = t[: len(t) - i0]
-    f = r.uniform(260, 620)
-    x[i0:] += np.sin(2 * np.pi * (f + 900 * tt) * tt) * np.exp(-tt * r.uniform(35, 60)) * r.uniform(0.15, 0.35)
-save_at(f'{P}/assets/sounds/swing_can.wav', x, 0.35)
 print('sounds written')

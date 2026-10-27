@@ -27,6 +27,7 @@ const Experience := preload("res://scripts/experience.gd")
 const LevelUp := preload("res://scripts/level_up.gd")
 const Upgrades := preload("res://scripts/upgrades.gd")
 const BuildMenu := preload("res://scripts/build_menu.gd")
+const Items := preload("res://scripts/items.gd")
 const Buildables := preload("res://scripts/buildables.gd")
 const Placer := preload("res://scripts/placer.gd")
 const FurnacePanel := preload("res://scripts/furnace_panel.gd")
@@ -1139,6 +1140,7 @@ func _setup_survival() -> void:
 		player.set("_chop_held", false)
 		_placer.start(id))
 	# Furnaces: E at one opens this panel.
+	_game_hud.throw_target = _throw_items
 	_furnace_panel = FurnacePanel.new()
 	_furnace_panel.inventory = _inventory
 	_furnace_panel.hud = _game_hud
@@ -1146,9 +1148,28 @@ func _setup_survival() -> void:
 	add_child(_furnace_panel)
 
 
+## A backpack stack dragged out of the HUD into the world (hud.gd): thrown on
+## the ground a little way towards where you let go. Thrown items don't vanish
+## like drops do. Tools can't be thrown (they have no ground picture).
+func _throw_items(id: String, count: int, screen_pos: Vector2) -> int:
+	if _pickups == null or not is_instance_valid(player) or not Items.get_item(id).has("world"):
+		_game_hud.note("Can't drop that", player.global_position + Vector2(0, -60), Color(1.0, 0.6, 0.5))
+		return 0
+	var aim: Vector2 = get_viewport().get_canvas_transform().affine_inverse() * screen_pos
+	var dir := player.global_position.direction_to(aim)
+	if dir == Vector2.ZERO:
+		dir = Vector2.DOWN
+	var dist := clampf(player.global_position.distance_to(aim), 20.0, 44.0)
+	var land := player.global_position + Vector2(dir.x, dir.y * 0.7) * dist
+	for i in count:
+		var spread := Vector2(randf_range(-7.0, 7.0), randf_range(-4.0, 4.0)) if count > 1 else Vector2.ZERO
+		_pickups.spawn_drop(id, land + spread, player.global_position + Vector2(0, -22), false)
+	return count
+
+
 ## A fire or torch was put out / lit (E): redraw the night darkness.
 func on_fire_toggled(_fire: Node) -> void:
-	get_tree().create_timer(0.05, false).timeout.connect(_rebuild_darkness)
+	get_tree().create_timer(0.05, false).timeout.connect(_refresh_darkness)
 
 
 ## Something was built: it lights up the night if it's a fire.
@@ -1156,7 +1177,7 @@ func _on_built(id: String, node: Node2D) -> void:
 	if is_instance_valid(player):
 		player.set("build_mode", false)
 	_game_hud.note("%s built" % Buildables.ALL[id].name, node.global_position + Vector2(0, -40), Color(0.75, 1.0, 0.7))
-	get_tree().create_timer(0.1, false).timeout.connect(_rebuild_darkness)
+	get_tree().create_timer(0.1, false).timeout.connect(_refresh_darkness)
 
 
 func _apply_experience() -> void:
@@ -1258,7 +1279,7 @@ func _on_water_pour(from: Vector2, side: int, seconds: float) -> void:
 	splash.global_position = from + Vector2(side * 6.0, 12.0)          # where the stream lands
 	# Water on a stump: the tree grows back right away.
 	if _chopping and _chopping.regrow_at(splash.global_position):
-		get_tree().create_timer(0.3, false).timeout.connect(_rebuild_darkness)
+		get_tree().create_timer(0.3, false).timeout.connect(_refresh_darkness)
 	get_tree().create_timer(seconds, false).timeout.connect(func():
 		for p in [drops, splash]:
 			if is_instance_valid(p):
@@ -1394,7 +1415,15 @@ func _apply_chopping() -> void:
 
 ## A tree came down: light now reaches where it stood (once the stump is in).
 func _on_tree_felled(_tree: Node2D) -> void:
-	get_tree().create_timer(0.15, false).timeout.connect(_rebuild_darkness)
+	get_tree().create_timer(0.15, false).timeout.connect(_refresh_darkness)
+
+
+## A prop appeared / went away or a fire was lit / put out: patch the darkness
+## around it (darkness.gd tracks the prop layers) - a few ms instead of the
+## ~250 ms full rebuild that used to freeze the screen for a moment.
+func _refresh_darkness() -> void:
+	if _dark:
+		_dark.refresh()
 
 
 func _rebuild_darkness() -> void:

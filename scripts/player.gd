@@ -129,11 +129,6 @@ const SWING_TOOLS := ["axe", "pickaxe", "spade", "watering_can"]
 ## The step system below still runs in sync with the run animation: list sound
 ## files here (played in turn) to bring footsteps back. werewolf.gd sets its own.
 const STEP_SOUNDS := []
-## Whoosh per swinging tool (tools/make_sounds.py), heard as the tool comes down.
-const SWING_SOUNDS := {"axe": "res://assets/sounds/swing_axe.wav", "pickaxe": "res://assets/sounds/swing_pickaxe.wav",
-		"spade": "res://assets/sounds/swing_spade.wav", "watering_can": "res://assets/sounds/swing_can.wav"}
-## How long before the hit the whoosh starts (its loudest part is near its end).
-const SWING_LEAD := 0.24
 const DEFAULT_STEPS := [0.0, 0.5]
 
 ## The character you control has the camera and the light; others (an AI
@@ -177,7 +172,6 @@ var step_volume_db := -6.0         # same every step; the sound itself is never 
 var step_hear_distance := 600.0    # world px; how far others hear these steps
 var step_sound: AudioStream        # current footstep sound (null = STEP_SOUNDS); change with set_step_sound()
 var step_takes: Array = STEP_SOUNDS   # default footstep files, played in turn (werewolf.gd sets its own)
-var swing_volume_db := -8.0
 var _takes: Array[AudioStream] = []
 var _take_i := 0
 var _custom_step := false
@@ -324,7 +318,6 @@ func _start_chop() -> void:
 	_moving = false
 	_swing_tool = held_tool
 	sprite.rotation = 0.0                         # no sneaking lean while swinging
-	_swing_whoosh.call_deferred()
 	if held_tool == "spade" or held_tool == "watering_can":
 		var table: Dictionary = DIG if held_tool == "spade" else WATER
 		var prefix := "dig_" if held_tool == "spade" else "water_"
@@ -366,37 +359,6 @@ func _start_mine_placeholder() -> void:
 	t.tween_callback(_emit_hit)
 	t.tween_property(sprite, "rotation", 0.0, m.recover * k).set_ease(Tween.EASE_IN_OUT).set_trans(Tween.TRANS_SINE)
 	t.tween_callback(_end_swing)
-
-
-## The tool's whoosh, timed so it peaks as the tool comes down on the hit frame.
-func _swing_whoosh() -> void:
-	var path: String = SWING_SOUNDS.get(_swing_tool, "")
-	if path == "" or not ResourceLoader.exists(path) or not chopping:
-		return
-	var delay := 0.25                              # placeholder pickaxe swing (no strip)
-	var anim := String(sprite.animation)
-	for prefix in ["chop_", "mine_", "dig_", "water_"]:
-		if anim.begins_with(prefix):
-			var table: Dictionary = {"chop_": CHOP, "mine_": MINE, "dig_": DIG, "water_": WATER}[prefix]
-			var w: Dictionary = table.get(anim.trim_prefix(prefix), {})
-			if w.is_empty():
-				break
-			var frames := 0.0
-			for f in w.impact:
-				frames += float(w.durations.get(f, 1.0))
-			delay = frames / w.fps / maxf(absf(sprite.speed_scale), 0.05)
-	if _swing_tool == "watering_can":
-		delay *= 0.35                              # the can's swish is the lift, not a strike
-	get_tree().create_timer(maxf(delay - SWING_LEAD, 0.0), false).timeout.connect(func():
-		if not is_instance_valid(self):
-			return
-		var a: Node = AudioStreamPlayer.new() if is_local else AudioStreamPlayer2D.new()
-		a.stream = load(path)
-		a.volume_db = swing_volume_db
-		a.pitch_scale = randf_range(0.95, 1.06)
-		add_child(a)
-		a.play()
-		a.finished.connect(a.queue_free))
 
 
 func _emit_hit() -> void:

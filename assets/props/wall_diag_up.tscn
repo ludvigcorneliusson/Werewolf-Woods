@@ -4,10 +4,10 @@
 [ext_resource type="Texture2D" path="res://assets/props/wall_diag_up.png" id="2_tex"]
 
 [sub_resource type="OccluderPolygon2D" id="OccluderPolygon2D_w"]
-polygon = PackedVector2Array(-19.62, 3.19, 16.77, -10.67, 19.62, -3.19, -16.77, 10.67)
+polygon = PackedVector2Array(-20.01, 5.10, 16.57, -12.32, 20.01, -5.10, -16.57, 12.32)
 
 [node name="WallDiagUp" type="Node2D" groups=["walls"]]
-metadata/wall_ends = [Vector2(-21, 8), Vector2(21, -8)]
+metadata/wall_ends = [Vector2(-21, 10), Vector2(21, -10)]
 
 [node name="Sprite" type="Sprite2D" parent="."]
 self_modulate = Color(0.5, 0.5, 0.5, 0.5)
@@ -20,7 +20,7 @@ offset = Vector2(-23, -56)
 [node name="Body" type="StaticBody2D" parent="."]
 
 [node name="Shape" type="CollisionPolygon2D" parent="Body"]
-polygon = PackedVector2Array(-19.62, 3.19, 16.77, -10.67, 19.62, -3.19, -16.77, 10.67)
+polygon = PackedVector2Array(-20.01, 5.10, 16.57, -12.32, 20.01, -5.10, -16.57, 12.32)
 
 [node name="VisionBlocker" type="LightOccluder2D" parent="."]
 occluder = SubResource("OccluderPolygon2D_w")

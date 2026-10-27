@@ -8,8 +8,14 @@ extends Node
 const CELL := 64.0
 
 var player: CharacterBody2D
-var props: Node              # World/Props TileMapLayer (plants are its children)
-var placed: Node             # World/Placed: your painted props (optional)
+var props: Node:             # World/Props TileMapLayer (plants are its children)
+	set(v):
+		props = v
+		_indexed_count = -1      # new map: index again
+var placed: Node:            # World/Placed: your painted props (optional)
+	set(v):
+		placed = v
+		_indexed_count = -1
 var walk_speed := 120.0
 
 var push_strength := 0.45    # max lean in radians at full bend, walking speed
@@ -19,14 +25,20 @@ var damping := 7.0           # higher = less wobble
 
 var _grid := {}              # Vector2i cell -> Array of [Node2D prop, Sprite2D, bend]
 var _active := {}            # Sprite2D -> [angle, velocity]
-var _indexed_count := -1
+var _indexed_count := -1     # -1 = not indexed yet
+var _pending: Array[Node] = []
 
 
 func _physics_process(delta: float) -> void:
 	if player == null or props == null:
 		return
-	if _child_count() != _indexed_count:
+	if _indexed_count < 0:
 		_index()
+	elif not _pending.is_empty():
+		for prop in _pending:
+			if is_instance_valid(prop) and prop.is_inside_tree():
+				_index_prop(prop)
+		_pending.clear()
 
 	var feet := player.global_position
 	var speed_factor := clampf(player.velocity.length() / walk_speed, 0.0, 2.0)
@@ -71,22 +83,44 @@ func _physics_process(delta: float) -> void:
 			sprite.skew = st[0]       # positive = top leans right (origin = foot)
 
 
-func _child_count() -> int:
-	return props.get_child_count() + (placed.get_child_count() if is_instance_valid(placed) else 0)
-
-
+## Indexes every plant once; afterwards plants that come or go are followed
+## through the layers' child signals (a full re-index of ~13k props each time
+## one was added or removed froze the game for a moment).
 func _index() -> void:
 	_grid.clear()
-	_indexed_count = _child_count()
+	_pending.clear()
+	_indexed_count = 1
 	var all_props := props.get_children()
+	for layer in [props, placed]:
+		if is_instance_valid(layer) and not layer.child_entered_tree.is_connected(_on_prop_added):
+			layer.child_entered_tree.connect(_on_prop_added)
+			layer.child_exiting_tree.connect(_on_prop_removed)
 	if is_instance_valid(placed):
 		all_props.append_array(placed.get_children())
 	for prop in all_props:
-		var b = prop.get("bend")
-		if b == null or float(b) <= 0.0:
-			continue
-		var sprite := prop.get_node_or_null("Sprite") as Sprite2D
-		if sprite == null:
-			continue
-		var cell := Vector2i((prop.global_position / CELL).floor())
-		_grid.get_or_add(cell, []).append([prop, sprite, float(b)])
+		_index_prop(prop)
+
+
+func _index_prop(prop: Node) -> void:
+	var b = prop.get("bend")
+	if b == null or float(b) <= 0.0:
+		return
+	var sprite := prop.get_node_or_null("Sprite") as Sprite2D
+	if sprite == null:
+		return
+	var cell := Vector2i(((prop as Node2D).global_position / CELL).floor())
+	_grid.get_or_add(cell, []).append([prop, sprite, float(b)])
+
+
+func _on_prop_added(prop: Node) -> void:
+	_pending.append(prop)
+
+
+func _on_prop_removed(prop: Node) -> void:
+	if not (prop is Node2D):
+		return
+	var cell := Vector2i(((prop as Node2D).global_position / CELL).floor())
+	var list: Array = _grid.get(cell, [])
+	for i in range(list.size() - 1, -1, -1):
+		if list[i][0] == prop:
+			list.remove_at(i)

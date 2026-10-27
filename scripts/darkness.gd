@@ -114,6 +114,12 @@ var _origin := Vector2.ZERO
 var _last_cell := Vector2i(-99999, -99999)
 var _player_tex: ImageTexture
 var _fires := []
+## Light-blocking props, for patching the grid when one changes (refresh()).
+const BUCKET := 128.0
+var _recs := {}                      # prop instance id -> record (see _add_rec)
+var _buckets := {}                   # Vector2i (BUCKET px squares) -> [instance ids]
+var _added := []                     # props added to a layer since the last refresh
+var _dirty: Array[Rect2i] = []       # grid areas to redo (props removed / added)
 
 
 ## Sets a darkness parameter on the ground overlay and (prefixed "dk_") on the
@@ -144,44 +150,130 @@ func _ready() -> void:
 
 
 ## Which cells hold a tree trunk (from the prop layers: World/Props and your
-## painted World/Placed), then the campfires' light.
+## painted World/Placed), then the campfires' light. Full rebuild (~100 ms on a
+## Medium map): only for a new map or changed settings. Props that appear or
+## disappear later (felled, regrown, mined, built) are tracked through the
+## layers' child signals and patched in by refresh() - only their spot is redone.
 func build(layers: Array, area: Rect2) -> void:
 	_origin = area.position
 	_grid = Vector2i((area.size / cell).ceil())
 	_absorb = PackedFloat32Array()
 	_absorb.resize(_grid.x * _grid.y)
-	var all_props := []
+	_recs.clear()
+	_buckets.clear()
+	_added.clear()
+	_dirty.clear()
 	for layer in layers:
-		if is_instance_valid(layer):
-			all_props.append_array(layer.get_children())
-	for prop in all_props:
-		var sprite := prop.get_node_or_null("Sprite") as Sprite2D
-		if sprite == null or sprite.texture == null:
+		if not is_instance_valid(layer):
 			continue
-		var key := sprite.texture.resource_path.get_file()
-		var spec = ABSORB.get(key)
-		if spec == null:
-			continue
-		var sc: float = prop.scale.x
-		var tree := key in TREES
-		var at: Vector2 = BASE_AT.get(key, Vector2.ZERO)
-		var sprite_flipped: bool = sprite.flip_h
-		var p: Vector2 = prop.global_position + Vector2(-at.x if sprite_flipped else at.x, at.y) * sc
-		if spec[3] > 0.0:
-			_stamp(p, spec[2] * sc, spec[3] * (canopy_absorption if tree else prop_absorption))
-		_stamp(p, spec[0] * sc, spec[1] * (trunk_absorption if tree else prop_absorption))
+		var n := layer as Node
+		if not n.child_entered_tree.is_connected(_on_child_added):
+			n.child_entered_tree.connect(_on_child_added)
+			n.child_exiting_tree.connect(_on_child_removed)
+		for prop in n.get_children():
+			_add_rec(prop)
+	for id in _recs:
+		_stamp_rec(_recs[id], Rect2i(Vector2i.ZERO, _grid))
 	_last_cell = Vector2i(-99999, -99999)
 	_build_static()
 
 
-## Adds absorption over a flat ellipse (3/4 view footprint) around a prop's base.
-func _stamp(p: Vector2, r: float, a: float) -> void:
+## Patches in the props that appeared / disappeared since the last build or
+## refresh (only their own spot of the light grid), then redraws the fire light.
+func refresh() -> void:
+	if _absorb.is_empty():
+		return
+	for n in _added:
+		if is_instance_valid(n) and n.is_inside_tree():
+			var rec = _add_rec(n)
+			if rec != null:
+				_dirty.append(_rec_rect(rec))
+	_added.clear()
+	for area: Rect2i in _dirty:
+		var r := area.intersection(Rect2i(Vector2i.ZERO, _grid))
+		if r.size.x <= 0 or r.size.y <= 0:
+			continue
+		for y in range(r.position.y, r.end.y):
+			for x in range(r.position.x, r.end.x):
+				_absorb[y * _grid.x + x] = 0.0
+		var b0 := Vector2i((Vector2(r.position) * cell / BUCKET).floor()) - Vector2i(1, 1)
+		var b1 := Vector2i((Vector2(r.end) * cell / BUCKET).floor()) + Vector2i(1, 1)
+		for by in range(b0.y, b1.y + 1):
+			for bx in range(b0.x, b1.x + 1):
+				for id in _buckets.get(Vector2i(bx, by), []):
+					_stamp_rec(_recs[id], r)
+	_dirty.clear()
+	_last_cell = Vector2i(-99999, -99999)
+	_build_static()
+
+
+func _on_child_added(n: Node) -> void:
+	_added.append(n)
+
+
+func _on_child_removed(n: Node) -> void:
+	var id := n.get_instance_id()
+	if not _recs.has(id):
+		return
+	var rec: Array = _recs[id]
+	_dirty.append(_rec_rect(rec))
+	_recs.erase(id)
+	var list: Array = _buckets.get(rec[0], [])
+	list.erase(id)
+
+
+## Records how much light one prop blocks: [bucket, base point, trunk radius,
+## trunk absorption, canopy radius, canopy absorption]. null = blocks nothing.
+func _add_rec(prop: Node):
+	var sprite := prop.get_node_or_null("Sprite") as Sprite2D
+	if sprite == null or sprite.texture == null or not (prop is Node2D):
+		return null
+	var key := sprite.texture.resource_path.get_file()
+	var spec = ABSORB.get(key)
+	if spec == null:
+		return null
+	var sc: float = (prop as Node2D).scale.x
+	var tree := key in TREES
+	var at: Vector2 = BASE_AT.get(key, Vector2.ZERO)
+	var p: Vector2 = (prop as Node2D).global_position + Vector2(-at.x if sprite.flip_h else at.x, at.y) * sc
+	var bucket := Vector2i((p / BUCKET).floor())
+	var rec := [bucket, p, spec[0] * sc, spec[1] * (trunk_absorption if tree else prop_absorption),
+			spec[2] * sc, spec[3] * (canopy_absorption if tree else prop_absorption)]
+	var id := prop.get_instance_id()
+	if _recs.has(id):
+		(_buckets.get(_recs[id][0], []) as Array).erase(id)
+	_recs[id] = rec
+	if not _buckets.has(bucket):
+		_buckets[bucket] = []
+	_buckets[bucket].append(id)
+	return rec
+
+
+## Grid cells a record can touch.
+func _rec_rect(rec: Array) -> Rect2i:
+	var r: float = maxf(rec[2], rec[4]) + cell
+	var c: Vector2 = (rec[1] - _origin) / cell
+	var e := Vector2(r, r * 0.5) / cell
+	var p0 := Vector2i((c - e).floor()) - Vector2i(1, 1)
+	var p1 := Vector2i((c + e).ceil()) + Vector2i(1, 1)
+	return Rect2i(p0, p1 - p0)
+
+
+func _stamp_rec(rec: Array, clip: Rect2i) -> void:
+	if rec[5] > 0.0:
+		_stamp(rec[1], rec[4], rec[5], clip)
+	_stamp(rec[1], rec[2], rec[3], clip)
+
+
+## Adds absorption over a flat ellipse (3/4 view footprint) around a prop's base
+## (only inside clip, in grid cells).
+func _stamp(p: Vector2, r: float, a: float, clip: Rect2i) -> void:
 	a = clampf(a, 0.0, 1.0)
 	var c := (p - _origin) / cell
 	var rx := maxf(r / cell, 0.5)
 	var ry := maxf(r * 0.5 / cell, 0.5)
-	for y in range(maxi(int(c.y - ry), 0), mini(int(c.y + ry) + 1, _grid.y)):
-		for x in range(maxi(int(c.x - rx), 0), mini(int(c.x + rx) + 1, _grid.x)):
+	for y in range(maxi(int(c.y - ry), clip.position.y), mini(int(c.y + ry) + 1, clip.end.y)):
+		for x in range(maxi(int(c.x - rx), clip.position.x), mini(int(c.x + rx) + 1, clip.end.x)):
 			var dx := (x + 0.5 - c.x) / rx
 			var dy := (y + 0.5 - c.y) / ry
 			if dx * dx + dy * dy <= 1.0:
@@ -189,32 +281,47 @@ func _stamp(p: Vector2, r: float, a: float) -> void:
 				_absorb[i] = 1.0 - (1.0 - _absorb[i]) * (1.0 - a)
 
 
-## Campfires: their light is calculated once into a map-wide texture.
+## Campfires: their light is calculated into a texture covering just the area
+## the fires light (not the whole map - that took ~80 ms each time).
 func _build_static() -> void:
 	_fires = get_tree().get_nodes_in_group("light_sources")
-	var img := Image.create(maxi(_grid.x, 1), maxi(_grid.y, 1), false, Image.FORMAT_L8)
+	var floods := []
+	var lo := Vector2i(1 << 30, 1 << 30)
+	var hi := Vector2i(-(1 << 30), -(1 << 30))
 	for f in _fires:
 		if not (f is Node2D):
 			continue
 		var r: float = f.get("light_radius") if f.get("light_radius") != null else 150.0
 		var res := _flood(f.global_position - Vector2(0, 8), r)
+		floods.append(res)
+		lo = Vector2i(mini(lo.x, res[2].x), mini(lo.y, res[2].y))
+		hi = Vector2i(maxi(hi.x, res[2].x + res[1].x), maxi(hi.y, res[2].y + res[1].y))
+	if floods.is_empty():
+		var blank := Image.create(1, 1, false, Image.FORMAT_L8)
+		_param("static_light", ImageTexture.create_from_image(blank))
+		_param("static_origin", _origin)
+		_param("static_size", Vector2(cell, cell))
+		return
+	var size := hi - lo
+	var data := PackedByteArray()
+	data.resize(size.x * size.y)
+	for res in floods:
+		var bytes: PackedByteArray = res[0]
 		var w: int = res[1].x
 		var h: int = res[1].y
-		var x0: int = res[2].x
-		var y0: int = res[2].y
-		var bytes: PackedByteArray = res[0]
+		var ox: int = res[2].x - lo.x
+		var oy: int = res[2].y - lo.y
 		for y in h:
+			var row := (oy + y) * size.x + ox
 			for x in w:
-				var gx := x0 + x
-				var gy := y0 + y
-				if gx >= 0 and gy >= 0 and gx < _grid.x and gy < _grid.y:
-					var v := bytes[y * w + x]
-					if v > img.get_pixel(gx, gy).r8:
-						img.set_pixel(gx, gy, Color8(v, v, v))
+				var v := bytes[y * w + x]
+				if v > data[row + x]:
+					data[row + x] = v
+	var img := Image.create_from_data(size.x, size.y, false, Image.FORMAT_L8, data)
 	img = _soften(img)
 	_param("static_light", ImageTexture.create_from_image(img))
-	_param("static_origin", _origin)
-	_param("static_size", Vector2(_grid) * cell)
+	_param("static_origin", _origin + Vector2(lo) * cell)
+	_param("static_size", Vector2(size) * cell)
 
 
 func _process(_delta: float) -> void:

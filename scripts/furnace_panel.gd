@@ -140,7 +140,8 @@ func _process(_delta: float) -> void:
 	_place()
 
 
-## Drop from the backpack (hud.gd): how many of id the slot under `pos` takes.
+## Drop from the backpack (hud.gd): how many of id the slot under `pos` takes
+## (-1 = let go on the panel but not on a slot: nothing happens).
 func _accept_drop(id: String, count: int, pos: Vector2) -> int:
 	if not is_open() or not is_instance_valid(furnace):
 		return 0
@@ -154,8 +155,8 @@ func _accept_drop(id: String, count: int, pos: Vector2) -> int:
 				if key == "fuel" and Furnace.FUEL.has(id):
 					why = "One kind of fuel at a time"
 				hud.note(why, furnace.global_position + Vector2(0, -70), Color(1.0, 0.6, 0.5))
-			return took
-	return 0
+			return took if took > 0 else -1      # refused: stays in the backpack
+	return -1 if _panel.get_global_rect().has_point(pos) else 0     # -1: on the panel, not thrown
 
 
 ## Click a slot: everything in it back into the backpack (what doesn't fit stays).

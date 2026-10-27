@@ -19,7 +19,7 @@ const BAD_COLOR := Color(1.0, 0.25, 0.22)
 const END_COLOR := Color(1.0, 0.85, 0.35)
 ## Walls: grid step and how close an end must come to a built wall's end to join it.
 const GRID := 4.0
-const SNAP := 20.0
+const SNAP := 30.0
 ## Walls: the ground strip checked for room stops this far short of each end and
 ## is this thick (so walls can meet end to end).
 const WALL_INSET := 5.0

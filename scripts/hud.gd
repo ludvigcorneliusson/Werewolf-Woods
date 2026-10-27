@@ -39,6 +39,9 @@ var blocked := false
 ## Called with (id, count, screen pos) when a backpack item is dropped outside
 ## the HUD's slots; returns how many it took (set by furnace_panel.gd).
 var drop_target := Callable()
+## Called with (id, count, screen pos) when a backpack item is dropped outside
+## every panel: throws it on the ground, returns how many went (set by main.gd).
+var throw_target := Callable()
 var _prompt: Label
 var _hurt: ColorRect
 var _notes: Control
@@ -326,7 +329,7 @@ func _input(event: InputEvent) -> void:
 				var to := _slot_at(at)
 				if to >= 0:
 					_drop(_drag_from, to)
-				elif _drag_from < TOOL_BASE and drop_target.is_valid():
+				elif _drag_from < TOOL_BASE:
 					_drop_outside(_drag_from, at)
 				_end_drag()
 			elif _press_slot >= TOOL_BASE and _slot_at(at) == _press_slot:
@@ -406,14 +409,19 @@ func _drop(from: int, to: int) -> void:
 
 
 ## A backpack item let go outside the HUD's slots: offer it to drop_target
-## (e.g. the furnace panel), which returns how many it took.
+## (e.g. the furnace panel), which returns how many it took; let go out in the
+## world, the whole stack is thrown on the ground (throw_target).
 func _drop_outside(from: int, at: Vector2) -> void:
 	var s: Dictionary = inventory.slots[from]
 	var id: String = s.get("id", "")
 	var count: int = s.get("count", 0)
 	if id == "" or count <= 0:
 		return
-	var took: int = drop_target.call(id, count, at)
+	var took := 0
+	if drop_target.is_valid():
+		took = drop_target.call(id, count, at)      # e.g. the furnace's slots; -1 = on its panel
+	if took == 0 and throw_target.is_valid() and not _over_hud(at):
+		took = throw_target.call(id, count, at)    # out into the world: thrown on the ground
 	if took <= 0:
 		return
 	if took >= count:
@@ -421,6 +429,14 @@ func _drop_outside(from: int, at: Vector2) -> void:
 	else:
 		inventory.slots[from] = {"id": id, "count": count - took}
 	inventory.changed.emit()
+
+
+## Is a screen point on one of the HUD's own boxes (backpack, tools bar, health)?
+func _over_hud(at: Vector2) -> bool:
+	for c: Control in [_inv_panel, _tools_box, _health_box]:
+		if c and c.is_visible_in_tree() and c.get_global_rect().has_point(at):
+			return true
+	return false
 
 
 func _is_tool(id: String) -> bool:

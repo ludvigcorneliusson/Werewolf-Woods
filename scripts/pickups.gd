@@ -21,7 +21,7 @@ var lifetime := 30.0              # seconds a dropped item stays on the ground (
 
 var _grid := {}                   # Vector2i cell -> Array of prop nodes that are items
 var _layers: Array[Node] = []
-var _indexed_count := -1
+var _pending: Array[Node] = []     # props added since the last index update
 var _target: Node2D
 
 
@@ -65,8 +65,9 @@ func try_pick() -> void:
 
 
 ## Drops an item on the ground at `at`. With `from`, it pops out of that point
-## in a little arc (e.g. off a falling tree).
-func spawn_drop(id: String, at: Vector2, from: Variant = null) -> Node2D:
+## in a little arc (e.g. off a falling tree). expires = false: stays until picked
+## up (things you throw out of the backpack yourself).
+func spawn_drop(id: String, at: Vector2, from: Variant = null, expires := true) -> Node2D:
 	var item := Items.get_item(id)
 	if item.is_empty() or not item.has("world"):
 		return null
@@ -90,7 +91,7 @@ func spawn_drop(id: String, at: Vector2, from: Variant = null) -> Node2D:
 	n.scale = Vector2.ONE * float(item.get("world_scale", 1.0))
 	world.add_child(n)
 	n.global_position = _free_spot(at)
-	if lifetime > 0.0:
+	if lifetime > 0.0 and expires:
 		get_tree().create_timer(lifetime, false).timeout.connect(_expire.bind(n))
 	if from != null:
 		# Pop out: slide from `from` to the spot while hopping up and down.
@@ -169,25 +170,48 @@ func _height(n: Node2D) -> float:
 ## Index the item props (pebbles, sticks) in World/Props and World/Placed by map
 ## cell, so finding the nearest one is cheap. Redone when props come or go.
 func _reindex_if_needed() -> void:
-	_layers.clear()
+	var layers: Array[Node] = []
 	for layer_name in ["Props", "Placed"]:
-		var l := world.get_node_or_null(layer_name)
+		var l := world.get_node_or_null(layer_name) if is_instance_valid(world) else null
 		if l:
-			_layers.append(l)
-	var count := 0
-	for l in _layers:
-		count += l.get_child_count()
-	if count == _indexed_count:
-		return
-	_indexed_count = count
-	_grid.clear()
-	for l in _layers:
-		for c in l.get_children():
-			if c is Node2D and Items.item_for_prop(_image(c)) != "":
-				var cell := Vector2i((c.global_position / CELL).floor())
-				if not _grid.has(cell):
-					_grid[cell] = []
-				_grid[cell].append(c)
+			layers.append(l)
+	if layers != _layers:
+		# New map: index everything once, then follow the layers' child signals
+		# (re-indexing ~13k props whenever one came or went froze the game).
+		_layers = layers
+		_grid.clear()
+		_pending.clear()
+		for l in _layers:
+			if not l.child_entered_tree.is_connected(_on_prop_added):
+				l.child_entered_tree.connect(_on_prop_added)
+				l.child_exiting_tree.connect(_on_prop_removed)
+			for c in l.get_children():
+				_index_prop(c)
+	for c in _pending:
+		if is_instance_valid(c) and c.is_inside_tree():
+			_index_prop(c)
+	_pending.clear()
+
+
+func _index_prop(c: Node) -> void:
+	if c is Node2D and Items.item_for_prop(_image(c)) != "":
+		var cell := Vector2i((c.global_position / CELL).floor())
+		if not _grid.has(cell):
+			_grid[cell] = []
+		if not _grid[cell].has(c):
+			_grid[cell].append(c)
+
+
+## Indexed a frame later (scene tiles get their position as they're added).
+func _on_prop_added(c: Node) -> void:
+	_pending.append(c)
+
+
+func _on_prop_removed(c: Node) -> void:
+	if c is Node2D:
+		var cell := Vector2i(((c as Node2D).global_position / CELL).floor())
+		if _grid.has(cell):
+			_grid[cell].erase(c)
 
 
 # --- removing ----------------------------------------------------------------------
@@ -204,7 +228,6 @@ func _remove(n: Node2D) -> void:
 		layer.erase_cell(layer.local_to_map(n.position))    # a painted/generated scene tile
 	else:
 		n.queue_free()
-	_indexed_count -= 1                    # we know about this one; no full re-index
 
 
 ## A copy of the item's picture that flies into the settler and vanishes.
