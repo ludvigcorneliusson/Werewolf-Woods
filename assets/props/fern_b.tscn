@@ -1,15 +1,16 @@
-[gd_scene format=3]
+[gd_scene format=3 uid="uid://cq3bnxpbdjboo"]
 
-[ext_resource type="Script" path="res://scripts/varied_prop.gd" id="1_qqq7m"]
+[ext_resource type="Script" uid="uid://cxvidcf7cremh" path="res://scripts/varied_prop.gd" id="1_qqq7m"]
 [ext_resource type="Material" path="res://assets/props/varied_material.tres" id="2_gpnsk"]
-[ext_resource type="Texture2D" path="res://assets/props/fern_b.png" id="3_hi8m7"]
+[ext_resource type="Texture2D" uid="uid://ck1dl7xru6yuu" path="res://assets/props/fern_b.png" id="3_hi8m7"]
 
 [node name="FernB" type="Node2D" unique_id=1393580723]
 script = ExtResource("1_qqq7m")
-sway = 0.6
+sway = 0.5
 bend = 1.0
 
 [node name="Sprite" type="Sprite2D" parent="." unique_id=1081547652]
+self_modulate = Color(0.5068796, 0.4988908, 0.49052328, 0.75)
 material = ExtResource("2_gpnsk")
 texture = ExtResource("3_hi8m7")
 centered = false

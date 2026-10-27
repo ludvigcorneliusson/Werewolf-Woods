@@ -16,6 +16,8 @@ const EscapeMenu := preload("res://scripts/escape_menu.gd")
 const Weather := preload("res://scripts/weather.gd")
 const Rain := preload("res://scripts/rain.gd")
 const AdvancedSettings := preload("res://scripts/advanced_settings.gd")
+const MusicPlayer := preload("res://scripts/music.gd")
+const TreeChopping := preload("res://scripts/tree_chopping.gd")
 ## Shared by every prop scene; we feed it the player position so trees fade
 ## when the player walks behind them.
 const PROP_MATERIAL := preload("res://assets/props/prop_material.tres")
@@ -134,6 +136,11 @@ var _footprints: Node2D
 	set(v):
 		werewolf_walk_speed = v
 		_apply_werewolf()
+## Played when the werewolf appears, from the spot where it spawns (so you can
+## tell roughly which way it is). When you play the werewolf: at dusk.
+@export var werewolf_howl: AudioStream = preload("res://assets/sounds/werewolf_howl.mp3")
+## Howl volume.
+@export_range(-40.0, 12.0, 0.5, "suffix:dB") var howl_volume := 0.0
 @export_range(20.0, 800.0, 5.0) var werewolf_sprint_speed := 215.0:
 	set(v):
 		werewolf_sprint_speed = v
@@ -246,6 +253,56 @@ var _day_night: Node
 
 var _weather: Node
 var _rain: Node2D
+
+# --- Music --------------------------------------------------------------------
+# Shuffled ambient playlists (scripts/music.gd): the day list until dusk starts,
+# then the night list. Keeps playing across rounds and in the menu. The player's
+# own Music volume is in the main menu Settings.
+@export_group("Music")
+## Play background music.
+@export var music_enabled := true:
+	set(v):
+		music_enabled = v
+		_apply_music()
+## Tracks for daylight (shuffled). Drag tracks in/out or between the lists.
+@export var day_music: Array[AudioStream] = [
+	preload("res://assets/music/ambient_07.mp3"), preload("res://assets/music/ambient_01.mp3"),
+	preload("res://assets/music/ambient_02.mp3"), preload("res://assets/music/ambient_08.mp3"),
+	preload("res://assets/music/ambient_05.mp3")]:
+	set(v):
+		day_music = v
+		_apply_music()
+## Tracks from dusk on (shuffled).
+@export var night_music: Array[AudioStream] = [
+	preload("res://assets/music/ambient_06.mp3"), preload("res://assets/music/ambient_09.mp3"),
+	preload("res://assets/music/ambient_03.mp3"), preload("res://assets/music/ambient_04.mp3"),
+	preload("res://assets/music/ambient_10.mp3")]:
+	set(v):
+		night_music = v
+		_apply_music()
+## Overall music level, under the sound effects (the player's Music slider comes on top).
+@export_range(-40.0, 6.0, 0.5, "suffix:dB") var music_level := -6.0:
+	set(v):
+		music_level = v
+		_apply_music()
+## Quiet seconds between tracks, random between min (x) and max (y).
+@export var music_gap := Vector2(4.0, 14.0):
+	set(v):
+		music_gap = v
+		_apply_music()
+## Seconds for a new track to fade in.
+@export_range(0.0, 20.0, 0.5, "suffix:s") var music_fade_in := 4.0:
+	set(v):
+		music_fade_in = v
+		_apply_music()
+## Seconds for the day music to fade out when dusk starts.
+@export_range(0.5, 30.0, 0.5, "suffix:s") var music_dusk_fade := 6.0:
+	set(v):
+		music_dusk_fade = v
+		_apply_music()
+@export_group("")
+
+var _music: Node
 var _escape_menu: CanvasLayer
 var _advanced_defaults := {}          # "main.prop"/"builder.prop" -> value from main.tscn (for Reset)
 var _round_started := false
@@ -381,6 +438,34 @@ var _round_label: Label
 		wind_direction = v
 		_apply_wind()
 
+# --- Chopping -----------------------------------------------------------------
+# Left click swings the axe (sideways: right, or left when you last faced left).
+# Hits on a tree trunk wear it down; it falls and leaves a stump.
+@export_group("Chopping")
+## Hits to fell a living pine.
+@export_range(1, 20, 1) var tree_hits := 4:
+	set(v):
+		tree_hits = v
+		_apply_chopping()
+## Hits to fell a dead tree.
+@export_range(1, 20, 1) var dead_tree_hits := 2:
+	set(v):
+		dead_tree_hits = v
+		_apply_chopping()
+## Swing speed (1 = normal, 1.5 = faster).
+@export_range(0.3, 3.0, 0.05) var chop_speed := 1.0:
+	set(v):
+		chop_speed = v
+		_apply_chopping()
+## Chop and falling-tree volume (dB).
+@export_range(-40.0, 12.0, 0.5, "suffix:dB") var chop_volume := -4.0:
+	set(v):
+		chop_volume = v
+		_apply_chopping()
+@export_group("")
+
+var _chopping: Node
+
 # --- Idle ---------------------------------------------------------------------
 # The settler breathes and sways slightly while standing still.
 @export_group("Idle")
@@ -498,6 +583,7 @@ func _ready() -> void:
 	GameSettings.apply_display(get_window())
 	GameSettings.apply_volume()
 	_apply_advanced_overrides()
+	_setup_music()
 
 	# Night: an organic darkness overlay with holes around the player and fires.
 	darkness = CanvasModulate.new()
@@ -536,6 +622,13 @@ func _ready() -> void:
 	_apply_wind()
 	_apply_idle()
 	_apply_footsteps()
+	_chopping = TreeChopping.new()
+	_chopping.player = player
+	add_child(_chopping)
+	if player.has_signal("chop_hit"):
+		player.connect("chop_hit", _chopping.on_chop_hit)
+	_chopping.tree_felled.connect(_on_tree_felled)
+	_apply_chopping()
 	_footprints = Footprints.new()
 	add_child(_footprints)
 	_footprints.walker = player
@@ -566,6 +659,9 @@ func _ready() -> void:
 
 
 func _process(_delta: float) -> void:
+	if _music and _day_night:
+		# Night music from the moment dusk starts (when the werewolf comes out).
+		_music.set_mood("day" if _day_night.phase == DayNight.Phase.DAY else "night")
 	_apply_sky()
 	_apply_rain_effects()
 	if map:
@@ -725,7 +821,26 @@ func _on_dusk() -> void:
 	if werewolf_spawns_at == "Dusk starts" and player_role == "human" and ai_werewolf:
 		_spawn_ai_werewolf()            # shows its own message
 	else:
+		if player_role == "werewolf":
+			_howl(player.global_position)   # you are the werewolf: your own howl at dusk
 		_flash("Dusk is falling...", 3.0)
+
+
+## The werewolf's howl, heard from where it is (gently panned, a bit quieter
+## the further away it is, but always audible).
+func _howl(at: Vector2) -> void:
+	if werewolf_howl == null:
+		return
+	var p := AudioStreamPlayer2D.new()
+	p.stream = werewolf_howl
+	p.volume_db = howl_volume
+	p.max_distance = 8000.0
+	p.attenuation = 0.6
+	p.panning_strength = 0.4
+	add_child(p)
+	p.global_position = at
+	p.play()
+	p.finished.connect(p.queue_free)
 
 
 func _on_night() -> void:
@@ -736,6 +851,20 @@ func _on_night() -> void:
 
 
 ## Rebuilds which cells hold tree trunks (from the props) and the campfire light.
+func _apply_chopping() -> void:
+	if _chopping:
+		_chopping.hits_to_fell = tree_hits
+		_chopping.dead_hits_to_fell = dead_tree_hits
+		_chopping.volume_db = chop_volume
+	if player and "chop_speed" in player:
+		player.set("chop_speed", chop_speed)
+
+
+## A tree came down: light now reaches where it stood (once the stump is in).
+func _on_tree_felled(_tree: Node2D) -> void:
+	get_tree().create_timer(0.15, false).timeout.connect(_rebuild_darkness)
+
+
 func _rebuild_darkness() -> void:
 	if _dark == null or not is_instance_valid(world):
 		return
@@ -845,6 +974,28 @@ func _apply_werewolf() -> void:
 	werewolf.lose_radius = werewolf_lose
 
 
+## The music player lives under the tree root so it survives round restarts:
+## reuse it if it's already there, otherwise make it.
+func _setup_music() -> void:
+	_music = get_tree().root.get_node_or_null("Music")
+	if _music == null:
+		_music = MusicPlayer.new()
+		get_tree().root.add_child.call_deferred(_music)
+	_apply_music()
+
+
+func _apply_music() -> void:
+	if _music == null:
+		return
+	_music.enabled = music_enabled
+	_music.day_tracks = day_music
+	_music.night_tracks = night_music
+	_music.volume_db = music_level
+	_music.gap = music_gap
+	_music.fade_in = music_fade_in
+	_music.mood_fade = music_dusk_fade
+
+
 ## Esc menu: the game keeps running (no pause); your character stands still.
 func _toggle_escape_menu() -> void:
 	if _escape_menu == null:
@@ -929,6 +1080,7 @@ func _spawn_ai_werewolf() -> void:
 	wolf.caught.connect(_on_caught)
 	werewolf = wolf
 	_apply_footsteps()
+	_howl(pos)
 	_flash("The werewolf is awake...", 3.0)
 
 
@@ -1036,7 +1188,7 @@ func _setup_painted_world() -> void:
 	player.camera.zoom = Vector2(camera_zoom, camera_zoom)   # Camera settings on Main
 	_add_world_borders()
 	player.camera.reset_smoothing()
-	_hud_label.text = "Seed %d (%s)   |   WASD move · Shift sprint · F god mode · N skip time · T rain · F11 fullscreen" % [GameSettings.map_seed, GameSettings.map_size] + (" · Mouse wheel zoom" if scroll_zoom else "")
+	_hud_label.text = "Seed %d (%s)   |   WASD move · Shift sprint · Click chop · F god mode · N skip time · T rain · F11 fullscreen" % [GameSettings.map_seed, GameSettings.map_size] + (" · Mouse wheel zoom" if scroll_zoom else "")
 
 
 func _add_world_borders() -> void:
@@ -1105,6 +1257,11 @@ func _setup_input() -> void:
 		"toggle_rain": [KEY_T],
 		"toggle_fullscreen": [KEY_F11],
 	}
+	if not InputMap.has_action("chop"):
+		InputMap.add_action("chop")
+		var click := InputEventMouseButton.new()
+		click.button_index = MOUSE_BUTTON_LEFT
+		InputMap.action_add_event("chop", click)
 	for action in bindings:
 		if InputMap.has_action(action):
 			continue

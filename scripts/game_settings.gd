@@ -6,8 +6,8 @@ extends RefCounted
 
 const PATH := "user://settings.cfg"
 
-## Map size name -> ground tiles per side (one grass tile = 131 px).
-const MAP_SIZES := {"Small": 50, "Medium": 80, "Large": 120}
+## Map size name -> ground tiles per side (one ground tile = 105 x 107 px).
+const MAP_SIZES := {"Small": 62, "Medium": 100, "Large": 150}
 ## Difficulty name -> AI werewolf speed multiplier (walk and sprint).
 ## For reference: the settler sprints at 200, the werewolf at 215 on Normal.
 const DIFFICULTIES := {"Easy": 0.85, "Normal": 1.0, "Hard": 1.12, "Nightmare": 1.25}
@@ -18,6 +18,7 @@ static var random_seed := true      # roll a new seed every round
 static var fullscreen := true
 static var difficulty := "Normal"
 static var volume := 0.8            # master volume 0..1
+static var music_volume := 0.6      # music volume 0..1 (the "Music" bus, scripts/music.gd)
 
 ## Advanced settings (Esc menu > Advanced settings): "main.<property>" or
 ## "builder.<property>" -> value. Re-applied by main.gd every round.
@@ -43,6 +44,7 @@ static func load_settings() -> void:
 	fullscreen = cf.get_value("display", "fullscreen", fullscreen)
 	difficulty = cf.get_value("game", "difficulty", difficulty)
 	volume = cf.get_value("audio", "volume", volume)
+	music_volume = cf.get_value("audio", "music_volume", music_volume)
 	if cf.has_section("advanced"):
 		for k in cf.get_section_keys("advanced"):
 			advanced[k] = cf.get_value("advanced", k)
@@ -60,6 +62,7 @@ static func save_settings() -> void:
 	cf.set_value("display", "fullscreen", fullscreen)
 	cf.set_value("game", "difficulty", difficulty)
 	cf.set_value("audio", "volume", volume)
+	cf.set_value("audio", "music_volume", music_volume)
 	for k in advanced:
 		cf.set_value("advanced", k, advanced[k])
 	cf.save(PATH)
@@ -104,3 +107,7 @@ static func apply_display(window: Window) -> void:
 static func apply_volume() -> void:
 	AudioServer.set_bus_volume_db(0, linear_to_db(maxf(volume, 0.0001)))
 	AudioServer.set_bus_mute(0, volume <= 0.001)
+	preload("res://scripts/music.gd").ensure_bus()
+	var mb := AudioServer.get_bus_index("Music")
+	AudioServer.set_bus_volume_db(mb, linear_to_db(maxf(music_volume, 0.0001)))
+	AudioServer.set_bus_mute(mb, music_volume <= 0.001)

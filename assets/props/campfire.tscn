@@ -2,9 +2,10 @@
 
 [ext_resource type="Script" uid="uid://dbmbey85p3fed" path="res://scripts/campfire.gd" id="1_ioc47"]
 [ext_resource type="Texture2D" uid="uid://bfgtcer5l5o4f" path="res://assets/props/ComfyUI_00021_.png" id="2_ioc47"]
+[ext_resource type="AudioStream" uid="uid://c2kmshsc08r2" path="res://assets/sounds/soundreality-fire-sound-334130 (mp3cut.net).mp3" id="3_pmr76"]
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_7jdik"]
-radius = 11.0
+radius = 20.024984
 
 [sub_resource type="CanvasItemMaterial" id="CanvasItemMaterial_6vsur"]
 blend_mode = 1
@@ -55,7 +56,7 @@ script = ExtResource("1_ioc47")
 
 [node name="Sprite" type="Sprite2D" parent="." unique_id=1943754317]
 light_mask = 2
-position = Vector2(-40, -51)
+position = Vector2(-40, -49)
 texture = ExtResource("2_ioc47")
 centered = false
 offset = Vector2(-17, -17)
@@ -72,6 +73,7 @@ position = Vector2(0, -8)
 amount = 46
 lifetime = 0.8
 preprocess = 0.8
+speed_scale = 0.8
 randomness = 0.5
 lifetime_randomness = 0.35
 emission_shape = 3
@@ -85,8 +87,8 @@ tangential_accel_min = -14.0
 tangential_accel_max = 14.0
 damping_min = 2.0
 damping_max = 6.0
-scale_amount_min = 2.0
-scale_amount_max = 4.0
+scale_amount_min = 5.0
+scale_amount_max = 10.0
 scale_amount_curve = SubResource("Curve_6dcep")
 color_ramp = SubResource("Gradient_t1yac")
 hue_variation_min = -0.02
@@ -108,7 +110,7 @@ gravity = Vector2(0, -30)
 initial_velocity_min = 8.0
 initial_velocity_max = 16.0
 scale_amount_min = 2.0
-scale_amount_max = 3.0
+scale_amount_max = 5.7
 scale_amount_curve = SubResource("Curve_cybci")
 color_ramp = SubResource("Gradient_imugd")
 
@@ -160,9 +162,15 @@ position = Vector2(-2, -8)
 color = Color(1, 0.62, 0.3, 1)
 energy = 1.35
 range_item_cull_mask = 7
-shadow_item_cull_mask = 5
-shadow_enabled = false
 shadow_filter = 1
 shadow_filter_smooth = 2.0
+shadow_item_cull_mask = 5
 texture = SubResource("GradientTexture2D_d8g2p")
 texture_scale = 0.7421875
+
+[node name="AudioStreamPlayer" type="AudioStreamPlayer" parent="." unique_id=982906656]
+stream = ExtResource("3_pmr76")
+volume_db = -12.0
+pitch_scale = 0.9
+autoplay = true
+parameters/looping = true

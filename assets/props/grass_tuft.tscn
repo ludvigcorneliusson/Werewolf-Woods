@@ -1,15 +1,16 @@
-[gd_scene format=3]
+[gd_scene format=3 uid="uid://m8jhlenvyure"]
 
-[ext_resource type="Script" path="res://scripts/varied_prop.gd" id="1_5ylak"]
+[ext_resource type="Script" uid="uid://cxvidcf7cremh" path="res://scripts/varied_prop.gd" id="1_5ylak"]
 [ext_resource type="Material" path="res://assets/props/varied_material.tres" id="2_34a8y"]
-[ext_resource type="Texture2D" path="res://assets/props/grass_tuft.png" id="3_hdebl"]
+[ext_resource type="Texture2D" uid="uid://tfu75xwsxnlf" path="res://assets/props/grass_tuft.png" id="3_hdebl"]
 
 [node name="GrassTuft" type="Node2D" unique_id=762823252]
 script = ExtResource("1_5ylak")
-sway = 0.8
-bend = 1.3
+sway = 0.4
+bend = 1.0
 
 [node name="Sprite" type="Sprite2D" parent="." unique_id=129286811]
+self_modulate = Color(0.5068796, 0.4988908, 0.49052328, 0.7)
 material = ExtResource("2_34a8y")
 texture = ExtResource("3_hdebl")
 centered = false

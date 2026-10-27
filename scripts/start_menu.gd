@@ -172,6 +172,18 @@ func _build_settings() -> void:
 		GameSettings.apply_volume())
 	_row(grid, "Volume", vol)
 
+	# Music volume (on top of the main volume)
+	var mus := HSlider.new()
+	mus.min_value = 0
+	mus.max_value = 100
+	mus.step = 1
+	mus.value = round(GameSettings.music_volume * 100.0)
+	mus.custom_minimum_size = Vector2(300, 28)
+	mus.value_changed.connect(func(v):
+		GameSettings.music_volume = v / 100.0
+		GameSettings.apply_volume())
+	_row(grid, "Music", mus)
+
 	_settings_screen.add_child(_gap(20))
 	var back := _button("Back", true)
 	back.pressed.connect(_close_settings)

@@ -6,7 +6,7 @@ extends SceneTree
 ##     To add a prop: drop <name>.png in assets/props/, add a line to PROPS, run this,
 ##     then give it a density in world_builder.gd if it should be placed automatically.
 ##   - assets/props/props_tileset.tres   scene tiles, so props can be painted with the TileMap brush
-##   - assets/tiles/ground_tileset.tres  the grass tile
+##   - assets/tiles/ground_tileset.tres  the ground tile
 ##   - the World node in main.tscn, using the settings on the WorldBuilder node
 ## (campfire.tscn itself is made once by tools/build_campfire.gd.)
 ## Re-running it OVERWRITES the World in main.tscn (and anything you painted there).
@@ -95,7 +95,7 @@ func _initialize() -> void:
 	pts = load("res://assets/props/props_tileset.tres")
 
 	# --- ground tileset ----------------------------------------------------
-	var tex := load("res://assets/tiles/grass.png") as Texture2D
+	var tex := load("res://assets/tiles/ground-pixel-snapper.png") as Texture2D
 	var gts := TileSet.new()
 	gts.tile_size = Vector2i(tex.get_width(), tex.get_height())
 	var atlas := TileSetAtlasSource.new()

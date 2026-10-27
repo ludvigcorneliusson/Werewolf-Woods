@@ -35,6 +35,21 @@ const RUN := {
 ## a footstep sound plays as the animation passes each one. The right and
 ## down_right strips hold two strides, so they have four steps.
 
+## Axe chop (left click), from the H3 video via tools/chop_from_video.py. Faces
+## right; mirrored for left. Facing up/down he chops toward his last sideways
+## direction. "durations" = how long each frame shows, in 1/fps steps: the
+## wind-up and the end of the swing are held a moment.
+const CHOP := {"tex": preload("res://assets/characters/settler_chop_right.png"), "frames": 26,
+		"size": Vector2i(48, 48), "offset": Vector2(-21, -47), "fps": 30.0, "impact": 18,
+		"durations": {0: 0.5, 13: 4.0, 19: 5.0, 20: 1.2, 21: 1.2, 22: 1.2, 23: 1.2, 24: 1.2, 25: 1.2}}
+## How far in front of the feet the axe lands (world px) and how big the hit area is.
+const CHOP_REACH := Vector2(17.0, -3.0)
+const CHOP_HIT_RADIUS := 13.0
+
+## The axe hits (at the impact frame). point = where the blade lands (world px),
+## side = 1 right / -1 left. main.gd passes this on to scripts/tree_chopping.gd.
+signal chop_hit(point: Vector2, side: int)
+
 const STEP_SOUND := "res://assets/sounds/footsteps/grass_step.wav"   # default footstep
 const DEFAULT_STEPS := [0.0, 0.5]
 
@@ -85,6 +100,11 @@ var _steps := {}                   # run animation -> step phases
 
 var _moving := false
 var _speed := 0.0
+## Chopping speed (1 = as built; 1.5 = half again as fast). main.gd sets it.
+var chop_speed := 1.0
+var chopping := false
+var _chop_queued := false
+var _side := 1                     # last sideways facing: 1 right, -1 left
 var _offsets := {}
 
 
@@ -107,6 +127,8 @@ func _ready() -> void:
 	sprite.material = _idle_mat if is_local else preload("res://assets/characters/character_material.tres")
 	sprite.light_mask = 4          # characters: lit only by vision and fires
 	add_child(sprite)
+	sprite.frame_changed.connect(_on_frame_changed)
+	sprite.animation_finished.connect(_on_animation_finished)
 	_play("idle_down")
 	_setup_footsteps()
 
@@ -144,6 +166,11 @@ func _physics_process(_delta: float) -> void:
 		dir = ai_dir.limit_length(1.0)
 	elif input_enabled:
 		dir = Input.get_vector("move_left", "move_right", "move_up", "move_down")
+	if _chop_queued and not chopping:
+		_start_chop()
+	_chop_queued = false
+	if chopping:
+		dir = Vector2.ZERO                  # stand still while swinging
 	_moving = dir.length() > 0.05
 
 	var sprint_on := ai_sprint if ai_controlled else (input_enabled and Input.is_action_pressed("sprint"))
@@ -159,13 +186,46 @@ func _physics_process(_delta: float) -> void:
 	_speed = speed
 	if _moving:
 		facing = dir
-	_update_sprite()
+		if absf(dir.x) > 0.05:
+			_side = 1 if dir.x > 0.0 else -1
+	if not chopping:
+		_update_sprite()
 	_update_idle(_delta)
 	queue_redraw()
 
 
 func _process(delta: float) -> void:
 	_update_footsteps(delta)
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	# Clicks on menus/HUD never get here (the GUI takes them first).
+	if is_local and not ai_controlled and input_enabled and event.is_action_pressed("chop"):
+		_chop_queued = true
+
+
+# --- chopping -------------------------------------------------------------------
+
+func _start_chop() -> void:
+	chopping = true
+	_moving = false
+	sprite.flip_h = _side < 0
+	sprite.speed_scale = chop_speed
+	sprite.play("chop_right")
+	sprite.frame = 0
+	_apply_flip_offset()
+
+
+func _on_frame_changed() -> void:
+	if chopping and sprite.animation == "chop_right" and sprite.frame == CHOP.impact:
+		chop_hit.emit(global_position + Vector2(CHOP_REACH.x * _side, CHOP_REACH.y), _side)
+
+
+func _on_animation_finished() -> void:
+	if sprite.animation == "chop_right":
+		chopping = false
+		facing = Vector2(_side, 0.0)
+		_update_sprite()
 
 
 # --- footsteps ----------------------------------------------------------------
@@ -252,7 +312,7 @@ func _play_step() -> void:
 func _update_idle(delta: float) -> void:
 	if sprite.material != _idle_mat:
 		return
-	var target := 1.0 if idle_enabled and not _moving else 0.0
+	var target := 1.0 if idle_enabled and not _moving and not chopping else 0.0
 	_idle = move_toward(_idle, target, delta * (1.5 if target > _idle else 8.0))
 	_idle_mat.set_shader_parameter("active", _idle)
 	_idle_mat.set_shader_parameter("breath_amount", breath_amount)
@@ -320,6 +380,16 @@ func _build_frames() -> SpriteFrames:
 			at.region = Rect2(Vector2(i * r.size.x, 0), Vector2(r.size))
 			sf.add_frame(run, at)
 		_offsets[run] = r.offset
+
+	sf.add_animation("chop_right")
+	sf.set_animation_loop("chop_right", false)
+	sf.set_animation_speed("chop_right", CHOP.fps)
+	for i in CHOP.frames:
+		var at := AtlasTexture.new()
+		at.atlas = CHOP.tex
+		at.region = Rect2(Vector2(i * CHOP.size.x, 0), Vector2(CHOP.size))
+		sf.add_frame("chop_right", at, CHOP.durations.get(i, 1.0))
+	_offsets["chop_right"] = CHOP.offset
 	return sf
 
 

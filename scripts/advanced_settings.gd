@@ -41,7 +41,8 @@ const SECTIONS := [
 	["Werewolf & Wind", "main", [
 		"ai_werewolf", "werewolf_spawns_at", "werewolf_spawn_distance", "werewolf_sense", "werewolf_lose",
 		"werewolf_walk_speed", "werewolf_sprint_speed",
-		"wind_enabled", "wind_strength", "wind_speed", "wind_lean", "wave_length"]],
+		"wind_enabled", "wind_strength", "wind_speed", "wind_lean", "wave_length",
+		"tree_hits", "dead_tree_hits", "chop_speed"]],
 ]
 
 ## Short explanations shown as tooltips (the @export doc comments are not

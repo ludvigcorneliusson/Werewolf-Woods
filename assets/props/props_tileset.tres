@@ -1,8 +1,8 @@
 [gd_resource type="TileSet" format=3 uid="uid://cdefa44mgwk22"]
 
 [ext_resource type="PackedScene" uid="uid://c1iw643jt6n1a" path="res://assets/props/pine_tall.tscn" id="1_bcyjq"]
-[ext_resource type="PackedScene" path="res://assets/props/fern_b.tscn" id="2_y8t7d"]
-[ext_resource type="PackedScene" path="res://assets/props/grass_tuft.tscn" id="3_25esq"]
+[ext_resource type="PackedScene" uid="uid://cq3bnxpbdjboo" path="res://assets/props/fern_b.tscn" id="2_y8t7d"]
+[ext_resource type="PackedScene" uid="uid://m8jhlenvyure" path="res://assets/props/grass_tuft.tscn" id="3_25esq"]
 [ext_resource type="PackedScene" path="res://assets/props/mushroom.tscn" id="4_48ves"]
 [ext_resource type="PackedScene" path="res://assets/props/mushroom_brown.tscn" id="5_sc7sb"]
 [ext_resource type="PackedScene" path="res://assets/props/bush_small.tscn" id="6_utasy"]
@@ -18,7 +18,7 @@
 [ext_resource type="PackedScene" path="res://assets/props/log.tscn" id="16_pu2oi"]
 [ext_resource type="PackedScene" path="res://assets/props/boulder.tscn" id="17_tpssq"]
 [ext_resource type="PackedScene" path="res://assets/props/mossy_rock.tscn" id="18_dukac"]
-[ext_resource type="PackedScene" path="res://assets/props/fern_a.tscn" id="19_sf0lx"]
+[ext_resource type="PackedScene" uid="uid://c3aele1vxt4ja" path="res://assets/props/fern_a.tscn" id="19_sf0lx"]
 
 [sub_resource type="TileSetScenesCollectionSource" id="TileSetScenesCollectionSource_hr3ne"]
 scenes/1/scene = ExtResource("1_bcyjq")

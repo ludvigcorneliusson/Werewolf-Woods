@@ -19,8 +19,8 @@ extends Node
 @export_tool_button("Rebuild World", "Reload") var rebuild_button = _on_rebuild_pressed
 
 @export_group("Map")
-## Map width/height in grass tiles (1 tile = 131 px). 30 ~= 3,900 px, 50 ~= 6,500 px.
-@export_range(4, 200, 1) var ground_tiles := 80
+## Map width/height in ground tiles (1 tile = 105 x 107 px). 40 ~= 4,200 px, 62 ~= 6,500 px.
+@export_range(4, 200, 1) var ground_tiles := 100
 ## Same seed = same forest every rebuild. Change it for a different layout.
 @export var map_seed := 67
 
@@ -82,8 +82,8 @@ extends Node
 @export_range(0.0, 400.0, 1.0, "suffix:px") var campfire_space := 60.0
 
 @export_group("Animals")
-## Rabbits per million square px (Medium map = about 110 million). They prefer
-## open ground. 0 = none. Tune their behaviour on assets/characters/rabbit.tscn.
+## Rabbits per million square px (Medium map = about 110 million), placed
+## randomly anywhere on the map. 0 = none. Tune their behaviour on assets/characters/rabbit.tscn.
 @export_range(0.0, 5.0, 0.01) var rabbits := 0.25
 
 @export_group("Painted Props")
@@ -359,8 +359,8 @@ func _place_props(props: TileMapLayer, ground: TileMapLayer) -> int:
 	return _taken.size()
 
 
-## Rabbits: scattered over the map, more on open ground, never inside a trunk,
-## rock or log, away from the campfire and your painted props. They live in
+## Rabbits: scattered randomly over the whole map (evenly), just never inside a
+## trunk, rock, log, the fire pit or one of your painted props. They live in
 ## World/Rabbits, which is rebuilt every time (and not saved in main.tscn).
 func _place_rabbits(world: Node, ground: TileMapLayer) -> void:
 	if rabbits <= 0.0 or not ResourceLoader.exists(RABBIT):
@@ -379,11 +379,8 @@ func _place_rabbits(world: Node, ground: TileMapLayer) -> void:
 	while placed < want and tries < want * 30:
 		tries += 1
 		var p := _random_point(area)
-		if p.length() < campfire_space + 80.0 or _near_painted(p, 12.0):
-			continue
-		if _rng.randf() > 1.0 - 0.65 * _forest(p):   # prefer clearings and gaps
-			continue
-		if _blocked(p, 6.0):
+		# Anywhere on the map, as long as it isn't inside something solid.
+		if p.length() < campfire_space or _near_painted(p, 12.0) or _blocked(p, 6.0):
 			continue
 		var r: Node2D = scene.instantiate()
 		r.position = p
