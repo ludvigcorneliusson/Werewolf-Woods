@@ -36,14 +36,16 @@ const RUN := {
 ## down_right strips hold two strides, so they have four steps.
 
 ## Axe chop (left click), from the H3 videos via tools/chop_from_video.py: one
-## strip per side (right = MiniMax_H3_00025, left = ClipProj_H3_00005). Facing
+## strip per side (right = ClipProj_H3_00018, left = ClipProj_H3_00005). Facing
 ## up/down he chops toward his last sideways side. "impact" = the frame where
 ## the blade lands. "durations" = how long each frame shows, in 1/fps steps:
 ## the top of the wind-up and the end of the swing are held a moment.
 const CHOP := {
-	"right": {"tex": preload("res://assets/characters/settler_chop_right.png"), "frames": 26,
-		"size": Vector2i(48, 48), "offset": Vector2(-21, -47), "fps": 30.0, "impact": 18,
-		"durations": {0: 0.5, 13: 4.0, 19: 5.0, 20: 1.2, 21: 1.2, 22: 1.2, 23: 1.2, 24: 1.2, 25: 1.2}},
+	# Filmed at ~12 fps (distinct frames only), so each frame shows twice as long.
+	"right": {"tex": preload("res://assets/characters/settler_chop_right.png"), "frames": 13,
+		"size": Vector2i(62, 48), "offset": Vector2(-30, -47), "fps": 30.0, "impact": 9,
+		"durations": {0: 0.5, 1: 2.0, 2: 2.0, 3: 2.0, 4: 2.0, 5: 2.0, 6: 5.0, 7: 2.0, 8: 2.0,
+			9: 5.0, 10: 2.0, 11: 2.0, 12: 2.0}},
 	"left": {"tex": preload("res://assets/characters/settler_chop_left.png"), "frames": 26,
 		"size": Vector2i(56, 50), "offset": Vector2(-32, -49), "fps": 30.0, "impact": 18,
 		"durations": {0: 0.5, 13: 4.0, 19: 5.0, 20: 1.2, 21: 1.2, 22: 1.2, 23: 1.2, 24: 1.2, 25: 1.2}},
@@ -114,6 +116,7 @@ var held_tool := "axe"
 ## Push from a hit (world px/s); fades out quickly. main.gd sets it when you're attacked.
 var knockback := Vector2.ZERO
 var _chop_queued := false
+var _chop_held := false            # left button held since a press in the game (not on a menu)
 var _side := 1                     # last sideways facing: 1 right, -1 left
 var _offsets := {}
 
@@ -176,6 +179,13 @@ func _physics_process(_delta: float) -> void:
 		dir = ai_dir.limit_length(1.0)
 	elif input_enabled:
 		dir = Input.get_vector("move_left", "move_right", "move_up", "move_down")
+	# Holding the button keeps chopping: the next swing starts as soon as one ends.
+	if _chop_held:
+		if Input.is_action_pressed("chop") and input_enabled and held_tool == "axe":
+			if not chopping:
+				_chop_queued = true
+		else:
+			_chop_held = false
 	if _chop_queued and not chopping:
 		_start_chop()
 	_chop_queued = false
@@ -213,6 +223,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	# Clicks on menus/HUD never get here (the GUI takes them first).
 	if is_local and not ai_controlled and input_enabled and held_tool == "axe" and event.is_action_pressed("chop"):
 		_chop_queued = true
+		_chop_held = true
 
 
 # --- chopping -------------------------------------------------------------------

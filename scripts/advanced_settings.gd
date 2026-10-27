@@ -38,17 +38,26 @@ const SECTIONS := [
 		"fog_enabled", "fog_color", "fog_darkness", "vision_radius", "fog_start", "fog_density",
 		"vision_brightness", "vision_tint", "vision_squash", "trunk_shade", "canopy_shade",
 		"prop_shade", "prop_side_shade", "prop_back_shade", "cell_softness"]],
+	["Experience", "main", [
+		"xp_first_level", "xp_curve", "xp_tall_pine", "xp_small_pine", "xp_dead_tree",
+		"upgrade_choices", "chop_speed_per_level", "run_speed_per_level", "hits_saved_per_level",
+		"rare_chance", "epic_chance", "rare_power", "epic_power", "xp_stump", "stump_hits"]],
 	["Werewolf & Wind", "main", [
 		"ai_werewolf", "werewolf_spawns_at", "werewolf_spawn_distance", "werewolf_sense", "werewolf_lose",
 		"werewolf_walk_speed", "werewolf_sprint_speed",
 		"wind_enabled", "wind_strength", "wind_speed", "wind_lean", "wave_length",
 		"tree_hits", "dead_tree_hits", "chop_speed",
-		"max_health", "werewolf_damage", "werewolf_bite_interval", "health_regen", "regen_delay"]],
+		"max_health", "werewolf_damage", "werewolf_bite_interval", "health_regen", "regen_delay", "drop_lifetime"]],
 ]
 
 ## Short explanations shown as tooltips (the @export doc comments are not
 ## available in the running game).
 const TIPS := {
+	"xp_first_level": "XP needed for the first level-up.",
+	"xp_curve": "How the XP needed grows: 1 = linear (10, 20, 30...), 0 = flat, 2 = steep (10, 40, 90...).",
+	"chop_speed_per_level": "Swift Axe: chopping speed per level (0.1 = +10%).",
+	"run_speed_per_level": "Light Boots: walk and sprint speed per level.",
+	"hits_saved_per_level": "Heavy Blade: hits fewer to fell a tree per level (never below 1).",
 	"tree_spacing": "Average distance between trees. Lower = denser forest.",
 	"forest_fill": "Share of the forest area that gets trees (1 = everywhere).",
 	"patch_frequency": "Size of the dense/open patches. Higher = smaller, more frequent patches.",

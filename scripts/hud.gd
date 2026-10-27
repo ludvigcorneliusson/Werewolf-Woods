@@ -29,6 +29,11 @@ var _inv_slots: Array[Panel] = []
 var _prompt: Label
 var _hurt: ColorRect
 var _notes: Control
+var _xp_fill: ColorRect
+var _xp_label: Label
+var _level_label: Label
+const XP_COLOR := Color(0.66, 0.38, 0.95)
+var _xp_frac := 0.0
 
 
 func _ready() -> void:
@@ -43,6 +48,7 @@ func _ready() -> void:
 	_notes.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_notes)
 	_build_health()
+	_build_xp()
 	_build_tools()
 	_build_inventory()
 	_prompt = _key_label("E")
@@ -94,6 +100,21 @@ func _build_health() -> void:
 	_health_fill.position = Vector2(2, 8)
 	_health_fill.size = Vector2(176, 12)
 	bar.add_child(_health_fill)
+	# Current level, next to the health bar.
+	var sep := ColorRect.new()
+	sep.color = BORDER
+	sep.custom_minimum_size = Vector2(2, 27)
+	row.add_child(sep)
+	_level_label = Label.new()
+	_level_label.custom_minimum_size = Vector2(54, 27)
+	_level_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_level_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_level_label.add_theme_font_size_override("font_size", 18)
+	_level_label.add_theme_color_override("font_color", XP_COLOR.lightened(0.3))
+	_level_label.add_theme_color_override("font_outline_color", Color.BLACK)
+	_level_label.add_theme_constant_override("outline_size", 4)
+	_level_label.text = "LV 1"
+	row.add_child(_level_label)
 	_health_label = Label.new()
 	_health_label.position = Vector2(0, 2)
 	_health_label.size = Vector2(180, 24)
@@ -121,6 +142,64 @@ func set_health(value: float, max_value: float, hurt := false) -> void:
 	if hurt:
 		_hurt.color.a = 0.35
 		create_tween().tween_property(_hurt, "color:a", 0.0, 0.5)
+
+
+# --- experience ------------------------------------------------------------------
+
+## Purple XP bar along the bottom edge; XP numbers above its right end. The
+## current level is shown next to the health bar.
+func _build_xp() -> void:
+	var back := ColorRect.new()
+	back.color = Color(0.03, 0.02, 0.05, 0.8)
+	back.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
+	back.offset_top = -8
+	back.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(back)
+	_xp_fill = ColorRect.new()
+	_xp_fill.color = XP_COLOR
+	_xp_fill.anchor_right = 0.0
+	_xp_fill.offset_top = 1
+	_xp_fill.offset_bottom = 7
+	_xp_fill.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	back.add_child(_xp_fill)
+	var shine := ColorRect.new()                      # thin highlight on top of the fill
+	shine.color = Color(1, 1, 1, 0.18)
+	shine.set_anchors_preset(Control.PRESET_TOP_WIDE)
+	shine.offset_bottom = 2
+	shine.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_xp_fill.add_child(shine)
+	_xp_label = Label.new()
+	_xp_label.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
+	_xp_label.offset_left = -160
+	_xp_label.offset_right = -12
+	_xp_label.offset_top = -30
+	_xp_label.offset_bottom = -9
+	_xp_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	_xp_label.add_theme_font_size_override("font_size", 14)
+	_xp_label.add_theme_color_override("font_color", XP_COLOR.lightened(0.35))
+	_xp_label.add_theme_color_override("font_outline_color", Color.BLACK)
+	_xp_label.add_theme_constant_override("outline_size", 4)
+	add_child(_xp_label)
+	set_xp(0, 10, 1)
+
+
+## Shows XP progress towards the next level, and the level.
+func set_xp(xp: int, needed: int, level: int) -> void:
+	var f := clampf(float(xp) / maxf(float(needed), 1.0), 0.0, 1.0)
+	_xp_label.text = "%d / %d XP" % [xp, needed]
+	if _level_label:
+		if _level_label.text != "LV %d" % level and level > 1:
+			_level_label.pivot_offset = _level_label.size / 2.0
+			_level_label.scale = Vector2(1.4, 1.4)
+			create_tween().tween_property(_level_label, "scale", Vector2.ONE, 0.3).set_trans(Tween.TRANS_BACK)
+		_level_label.text = "LV %d" % level
+	var t := create_tween()
+	if f < _xp_frac:
+		# Wrapped to a new level: fill up, then start again from empty.
+		t.tween_property(_xp_fill, "anchor_right", 1.0, 0.15)
+		t.tween_property(_xp_fill, "anchor_right", 0.0, 0.0)
+	t.tween_property(_xp_fill, "anchor_right", f, 0.25).set_ease(Tween.EASE_OUT)
+	_xp_frac = f
 
 
 # --- tools bar -------------------------------------------------------------------

@@ -16,6 +16,7 @@ var inventory: Node
 var hud: Node
 var enabled := true
 var reach := 30.0                 # world px from the feet
+var lifetime := 30.0              # seconds a dropped item stays on the ground (0 = forever)
 
 var _grid := {}                   # Vector2i cell -> Array of prop nodes that are items
 var _layers: Array[Node] = []
@@ -80,6 +81,8 @@ func spawn_drop(id: String, at: Vector2, from: Variant = null) -> Node2D:
 	n.scale = Vector2.ONE * float(item.get("world_scale", 1.0))
 	world.add_child(n)
 	n.global_position = _free_spot(at)
+	if lifetime > 0.0:
+		get_tree().create_timer(lifetime, false).timeout.connect(_expire.bind(n))
 	if from != null:
 		# Pop out: slide from `from` to the spot while hopping up and down.
 		var start: Vector2 = from
@@ -91,6 +94,12 @@ func spawn_drop(id: String, at: Vector2, from: Variant = null) -> Node2D:
 		hop.tween_property(s, "position:y", -18.0 / n.scale.y, 0.2).set_ease(Tween.EASE_OUT)
 		hop.tween_property(s, "position:y", 0.0, 0.25).set_ease(Tween.EASE_IN)
 	return n
+
+
+## The dropped item is gone. Map stones and sticks never expire - only drops.
+func _expire(n: Node2D) -> void:
+	if is_instance_valid(n):
+		n.queue_free()
 
 
 # --- finding items -----------------------------------------------------------------

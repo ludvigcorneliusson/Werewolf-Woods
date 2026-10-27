@@ -21,6 +21,9 @@ const TreeChopping := preload("res://scripts/tree_chopping.gd")
 const Inventory := preload("res://scripts/inventory.gd")
 const GameHud := preload("res://scripts/hud.gd")
 const Pickups := preload("res://scripts/pickups.gd")
+const Experience := preload("res://scripts/experience.gd")
+const LevelUp := preload("res://scripts/level_up.gd")
+const Upgrades := preload("res://scripts/upgrades.gd")
 ## Shared by every prop scene; we feed it the player position so trees fade
 ## when the player walks behind them.
 const PROP_MATERIAL := preload("res://assets/props/prop_material.tres")
@@ -446,7 +449,7 @@ var _round_label: Label
 # Hits on a tree trunk wear it down; it falls and leaves a stump.
 @export_group("Chopping")
 ## Hits to fell a living pine.
-@export_range(1, 20, 1) var tree_hits := 4:
+@export_range(1, 20, 1) var tree_hits := 7:
 	set(v):
 		tree_hits = v
 		_apply_chopping()
@@ -454,6 +457,11 @@ var _round_label: Label
 @export_range(1, 20, 1) var dead_tree_hits := 2:
 	set(v):
 		dead_tree_hits = v
+		_apply_chopping()
+## Hits to chop out a stump (it drops a log and twigs).
+@export_range(1, 20, 1) var stump_hits := 3:
+	set(v):
+		stump_hits = v
 		_apply_chopping()
 ## Swing speed (1 = normal, 1.5 = faster).
 @export_range(0.3, 3.0, 0.05) var chop_speed := 1.0:
@@ -488,9 +496,61 @@ var _chopping: Node
 @export_range(0.0, 120.0, 0.5, "suffix:s") var regen_delay := 8.0
 ## Backpack slots.
 @export_range(1, 30, 1) var inventory_slots := 6
+## Seconds a dropped item (logs and twigs from trees) stays on the ground before
+## it disappears. 0 = never. Stones and sticks of the map never vanish.
+@export_range(0.0, 600.0, 1.0, "suffix:s") var drop_lifetime := 30.0
 ## How close you must be to pick something up (world px).
 @export_range(8.0, 120.0, 1.0, "suffix:px") var pickup_reach := 30.0
 @export_group("")
+
+# --- Experience -------------------------------------------------------------------
+# Tasks give XP; a full bar = level up: the game pauses and you pick one of
+# three upgrades. XP needed for level n -> n+1 = First Level XP x n ^ XP Curve:
+#   curve 1 = linear (10, 20, 30, 40 ...), 0 = flat (10, 10, 10 ...),
+#   0.5 = flattening (10, 14, 17, 20 ...), 2 = steep (10, 40, 90, 160 ...).
+@export_group("Experience")
+## XP needed for the first level-up (level 1 -> 2).
+@export_range(1, 1000, 1) var xp_first_level := 10:
+	set(v):
+		xp_first_level = v
+		_apply_experience()
+## How the requirement grows per level: 1 = linear, below 1 flatter, above 1 steeper (0 = same every level).
+@export_range(0.0, 3.0, 0.05) var xp_curve := 1.3:
+	set(v):
+		xp_curve = v
+		_apply_experience()
+## XP for felling a big pine.
+@export_range(0, 100, 1) var xp_tall_pine := 4
+## XP for felling a small dark pine.
+@export_range(0, 100, 1) var xp_small_pine := 2
+## XP for felling a dead tree.
+@export_range(0, 100, 1) var xp_dead_tree := 3
+## Upgrades offered per level-up.
+@export_range(1, 3, 1) var upgrade_choices := 3
+## Swift Axe: chopping speed per level (0.1 = +10%).
+@export_range(0.0, 2.0, 0.01) var chop_speed_per_level := 0.1
+## Light Boots: walk and sprint speed per level (0.05 = +5%).
+@export_range(0.0, 1.0, 0.01) var run_speed_per_level := 0.05
+## Heavy Blade: hits fewer to fell a tree (and chop out a stump) per level. Never below 1 hit.
+@export_range(0, 5, 1) var hits_saved_per_level := 1
+## Chance that an offered card is Rare (blue).
+@export_range(0.0, 1.0, 0.01) var rare_chance := 0.25
+## Chance that an offered card is Epic (purple).
+@export_range(0.0, 1.0, 0.01) var epic_chance := 0.05
+## A Rare card counts as this many normal levels of its upgrade.
+@export_range(1.0, 10.0, 0.1) var rare_power := 2.0
+## An Epic card counts as this many normal levels of its upgrade.
+@export_range(1.0, 10.0, 0.1) var epic_power := 3.0
+## XP for chopping out a stump.
+@export_range(0, 100, 1) var xp_stump := 1
+@export_group("")
+
+var _xp: Node
+var _level_up: CanvasLayer
+var upgrade_levels := {}            # upgrade id -> cards taken (counts towards its max level)
+var upgrade_power := {}             # upgrade id -> summed effect (common 1, rare 2, epic 3 ...)
+var _offered := {}                  # upgrade id -> rarity of the card on screen
+var _pending_levels := 0
 
 var health := 100.0
 var _since_hurt := 999.0
@@ -901,9 +961,137 @@ func _setup_survival() -> void:
 	_pickups.inventory = _inventory
 	_pickups.hud = _game_hud
 	_pickups.reach = pickup_reach
+	_pickups.lifetime = drop_lifetime
 	add_child(_pickups)
 	if _chopping:
 		_chopping.pickups = _pickups
+		_chopping.tree_cut.connect(_on_tree_cut)
+		_chopping.stump_cleared.connect(_on_stump_cleared)
+	_xp = Experience.new()
+	add_child(_xp)
+	_apply_experience()
+	_xp.xp_changed.connect(func(x: int, n: int, lvl: int): _game_hud.set_xp(x, n, lvl))
+	_xp.leveled_up.connect(_on_level_up)
+	_game_hud.set_xp(0, _xp.needed(), 1)
+	_level_up = LevelUp.new()
+	add_child(_level_up)
+	_level_up.chosen.connect(_on_upgrade_chosen)
+
+
+func _apply_experience() -> void:
+	if _xp == null:
+		return
+	_xp.first_level_xp = xp_first_level
+	_xp.curve = xp_curve
+	if _game_hud:
+		_game_hud.set_xp(_xp.xp, _xp.needed(), _xp.level)
+
+
+## A tree came down under your axe: experience by tree type.
+func _on_tree_cut(tree: Node2D, image: String) -> void:
+	var amount := xp_tall_pine
+	if image == "pine_dark.png":
+		amount = xp_small_pine
+	elif image.begins_with("dead"):
+		amount = xp_dead_tree
+	if amount <= 0 or _xp == null:
+		return
+	_game_hud.note("+%d XP" % amount, tree.global_position + Vector2(0, -60), Color(0.82, 0.62, 1.0))
+	_xp.add_xp(amount, "tree")
+
+
+## A stump chopped out: a little XP, and light reaches the spot.
+func _on_stump_cleared(stump: Node2D) -> void:
+	if xp_stump > 0 and _xp:
+		_game_hud.note("+%d XP" % xp_stump, stump.global_position + Vector2(0, -30), Color(0.82, 0.62, 1.0))
+		_xp.add_xp(xp_stump, "stump")
+	_on_tree_felled(stump)
+
+
+func _on_level_up(_level: int) -> void:
+	_pending_levels += 1
+	if not _level_up.is_open() and _pending_levels == 1:
+		# A short beat so you see the bar fill, then the choice.
+		get_tree().create_timer(0.35, false).timeout.connect(_show_level_up)
+
+
+func _show_level_up() -> void:
+	if _pending_levels <= 0 or _dead:
+		return
+	# Heavy Blade is done once a big pine already falls in one hit.
+	var levels := upgrade_levels.duplicate()
+	if tree_hits - _hits_saved(float(upgrade_power.get("axe_damage", 0.0))) <= 1:
+		levels["axe_damage"] = 999
+	var ids := Upgrades.pick(levels, upgrade_choices)
+	if ids.is_empty():
+		_pending_levels = 0                 # everything maxed: nothing to choose
+		return
+	var cards := []
+	_offered.clear()
+	for id in ids:
+		var lvl := int(upgrade_levels.get(id, 0))
+		var u: Dictionary = Upgrades.ALL[id]
+		var rarity := Upgrades.roll_rarity(rare_chance, epic_chance)
+		_offered[id] = rarity
+		var r: Dictionary = Upgrades.RARITIES[rarity]
+		cards.append({"id": id, "name": u.name, "icon": u.icon, "level": lvl,
+				"desc": _upgrade_desc(id, _rarity_power(rarity)),
+				"rarity": r.name, "color": r.color})
+	get_tree().paused = true
+	if is_instance_valid(player):
+		player.set("_chop_queued", false)
+		player.set("_chop_held", false)
+	_level_up.show_choices(_xp.level - _pending_levels + 1, cards)
+
+
+## Hits Heavy Blade takes off, for a summed upgrade power (common 1, rare 2, epic 3).
+func _hits_saved(power: float) -> int:
+	return roundi(power) * hits_saved_per_level
+
+
+func _rarity_power(rarity: String) -> float:
+	return {"rare": rare_power, "epic": epic_power}.get(rarity, 1.0)
+
+
+## Card text: what taking this card (worth `power` normal levels) gives.
+func _upgrade_desc(id: String, power: float) -> String:
+	var u: Dictionary = Upgrades.ALL[id]
+	var have := float(upgrade_power.get(id, 0.0))
+	match id:
+		"chop_speed":
+			return u.desc % roundi(chop_speed_per_level * power * 100.0)
+		"run_speed":
+			return u.desc % roundi(run_speed_per_level * power * 100.0)
+		"axe_damage":
+			var now := maxi(tree_hits - _hits_saved(have), 1)
+			var after := maxi(tree_hits - _hits_saved(have + power), 1)
+			return u.desc % ("in %d hits instead of %d" % [after, now])
+	return ""
+
+
+func _on_upgrade_chosen(id: String) -> void:
+	upgrade_levels[id] = int(upgrade_levels.get(id, 0)) + 1
+	upgrade_power[id] = float(upgrade_power.get(id, 0.0)) + _rarity_power(_offered.get(id, "common"))
+	_apply_upgrades()
+	_pending_levels -= 1
+	if _pending_levels > 0:
+		_show_level_up()
+	else:
+		get_tree().paused = false
+
+
+## Upgrade effects on top of the base settings.
+func _apply_upgrades() -> void:
+	var chop_l := float(upgrade_power.get("chop_speed", 0.0))
+	var run_l := float(upgrade_power.get("run_speed", 0.0))
+	var saved := _hits_saved(float(upgrade_power.get("axe_damage", 0.0)))
+	if is_instance_valid(player) and player_role == "human":
+		player.set("chop_speed", chop_speed * (1.0 + chop_speed_per_level * chop_l))
+		player.set("walk_speed", Player.WALK_SPEED * (1.0 + run_speed_per_level * run_l))
+		player.set("sprint_speed", Player.SPRINT_SPEED * (1.0 + run_speed_per_level * run_l))
+	if _chopping:
+		_chopping.damage = 1.0
+		_chopping.hits_saved = saved
 
 
 ## Health back after a while without being hurt.
@@ -921,9 +1109,11 @@ func _apply_chopping() -> void:
 	if _chopping:
 		_chopping.hits_to_fell = tree_hits
 		_chopping.dead_hits_to_fell = dead_tree_hits
+		_chopping.stump_hits = stump_hits
 		_chopping.volume_db = chop_volume
 	if player and "chop_speed" in player:
 		player.set("chop_speed", chop_speed)
+	_apply_upgrades()
 
 
 ## A tree came down: light now reaches where it stood (once the stump is in).
@@ -1291,7 +1481,7 @@ func _setup_painted_world() -> void:
 	player.camera.zoom = Vector2(camera_zoom, camera_zoom)   # Camera settings on Main
 	_add_world_borders()
 	player.camera.reset_smoothing()
-	_hud_label.text = "Seed %d (%s)   |   WASD move · Shift sprint · Click chop · E pick up · Tab backpack · 1-4 tools · F god mode · N skip time · T rain · F11 fullscreen" % [GameSettings.map_seed, GameSettings.map_size] + (" · Mouse wheel zoom" if scroll_zoom else "")
+	_hud_label.text = "Seed %d (%s)   |   WASD move · Shift sprint · Click (hold) chop · E pick up · Tab backpack · 1-4 tools · F god mode · N skip time · T rain · F11 fullscreen" % [GameSettings.map_seed, GameSettings.map_size] + (" · Mouse wheel zoom" if scroll_zoom else "")
 
 
 func _add_world_borders() -> void:

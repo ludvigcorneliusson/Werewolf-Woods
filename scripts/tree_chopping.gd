@@ -5,10 +5,17 @@ extends Node
 ## Created by main.gd, which passes in its Chopping settings.
 
 signal tree_felled(tree: Node2D)
+## The moment a tree is cut through (before it falls): image = its prop image,
+## e.g. "pine_tall.png" (main.gd gives experience for it).
+signal tree_cut(tree: Node2D, image: String)
+## A stump was chopped out (main.gd gives a little experience).
+signal stump_cleared(stump: Node2D)
 
 ## Prop images that count as trees (the same names as scripts/darkness.gd).
 const LIVING := ["pine_tall.png", "pine_dark.png"]
 const DEAD := ["dead_pine.png", "dead_tree.png"]
+## Stumps can be chopped out too: they drop a log and some twigs and are gone.
+const STUMPS := ["stump.png", "pine_tall_stump.png"]
 const STUMP_SCENE := "res://assets/props/stump.tscn"
 ## Trees that split when felled: the moment it goes, the tree's own picture is
 ## cut in two at "cut" (art row): the top falls, pivoting on the trunk at the
@@ -32,7 +39,10 @@ const DROPS := {"pine_tall.png": [2, 2, 3], "pine_dark.png": [1, 1, 2],
 		"dead_pine.png": [1, 2, 4], "dead_tree.png": [1, 2, 4]}
 var hits_to_fell := 4             # living pines
 var dead_hits_to_fell := 2        # dead trees are dry and brittle
+var stump_hits := 3               # hits to chop out a stump
 var hit_radius := 13.0            # world px around the blade
+var damage := 1.0                 # how many "hits" one swing counts as
+var hits_saved := 0               # Heavy Blade: every tree and stump needs this many fewer hits (min 1)
 var volume_db := -4.0
 var fall_time := 1.1              # seconds for a tree to topple
 var face_delay := 0.3             # split trees: seconds into the fall before the cut face shows
@@ -55,12 +65,21 @@ func on_chop_hit(point: Vector2, side: int) -> void:
 	if tree == null:
 		return
 	var id := tree.get_instance_id()
-	_hits[id] = int(_hits.get(id, 0)) + 1
+	_hits[id] = float(_hits.get(id, 0.0)) + damage
 	_sound(_chop_sound, point, randf_range(0.92, 1.08))
 	_chips(point, side)
-	var needed := dead_hits_to_fell if _image(tree) in DEAD else hits_to_fell
-	if _hits[id] >= needed:
+	var img := _image(tree)
+	if img in STUMPS:
+		if _hits[id] >= maxi(stump_hits - hits_saved, 1) - 0.001:
+			_hits.erase(id)
+			_clear_stump(tree)
+		else:
+			_shake(tree)
+		return
+	var needed := maxi((dead_hits_to_fell if img in DEAD else hits_to_fell) - hits_saved, 1)
+	if _hits[id] >= needed - 0.001:
 		_hits.erase(id)
+		tree_cut.emit(tree, _image(tree))
 		_fell(tree, side)
 	else:
 		_shake(tree)
@@ -87,7 +106,7 @@ func _tree_at(point: Vector2) -> Node2D:
 		if prop == null or prop.has_meta("felling"):
 			continue
 		var img := _image(prop)
-		if not (img in LIVING or img in DEAD):
+		if not (img in LIVING or img in DEAD or img in STUMPS):
 			continue
 		var d := prop.global_position.distance_to(point)
 		if d < best_d:
@@ -155,7 +174,6 @@ func _fell(tree: Node2D, side: int) -> void:
 			var n := tree.get_node_or_null(part)
 			if n:
 				n.queue_free()
-	_sound(_fall_sound, tree.global_position, randf_range(0.95, 1.05))
 	if sprite:
 		var t := tree.create_tween()
 		# A slow lean at first, then it goes: rotation around the foot (the origin).
@@ -163,11 +181,15 @@ func _fell(tree: Node2D, side: int) -> void:
 				.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
 		t.tween_property(sprite, "rotation", side * PI * 0.44, 0.08)      # small bounce on landing
 		t.tween_property(sprite, "rotation", side * PI * 0.47, 0.1)
-		t.tween_callback(_dust.bind(tree.global_position + Vector2(side * _length(tree) * 0.5, -4.0)))
+		# Thud as it hits the ground.
+		var land := tree.global_position + Vector2(side * _length(tree) * 0.5, -4.0)
+		t.tween_callback(func(): _sound(_fall_sound, land, randf_range(0.95, 1.05)))
+		t.tween_callback(_dust.bind(land))
 		t.tween_callback(_drop_wood.bind(tree, side))
 		t.tween_interval(0.25)
 		t.tween_callback(_replace_with_stump.bind(tree))
 	else:
+		_sound(_fall_sound, tree.global_position, randf_range(0.95, 1.05))
 		_replace_with_stump(tree)
 
 
@@ -257,7 +279,34 @@ func _drop_wood(tree: Node2D, side: int) -> void:
 		pickups.spawn_drop(items[i], at, base + Vector2(side * length * f, -10.0))
 
 
-func _dust(at: Vector2) -> void:
+## Digs a stump out: a puff of dust, a log and twigs, and the spot is clear.
+func _clear_stump(stump: Node2D) -> void:
+	stump.set_meta("felling", true)
+	var at := stump.global_position
+	_sound(_fall_sound, at, randf_range(1.25, 1.4))           # a shorter, higher thud
+	_dust(at + Vector2(0, -4), 22.0)
+	if pickups:
+		pickups.spawn_drop("log", at + Vector2(randf_range(-14, 14), randf_range(4, 12)), at + Vector2(0, -10))
+		for i in randi_range(1, 2):
+			pickups.spawn_drop("twig", at + Vector2(randf_range(-26, 26), randf_range(-6, 16)), at + Vector2(0, -10))
+	# Sink and vanish.
+	var t := stump.create_tween()
+	t.tween_property(stump, "scale:y", 0.0, 0.18).set_ease(Tween.EASE_IN)
+	t.tween_callback(_remove_prop.bind(stump))
+
+
+func _remove_prop(n: Node2D) -> void:
+	if not is_instance_valid(n):
+		return
+	var layer := n.get_parent() as TileMapLayer
+	if layer and n.position == layer.map_to_local(layer.local_to_map(n.position)):
+		layer.erase_cell(layer.local_to_map(n.position))
+	else:
+		n.queue_free()
+	stump_cleared.emit(n)
+
+
+func _dust(at: Vector2, width := 60.0) -> void:
 	var p := CPUParticles2D.new()
 	p.one_shot = true
 	p.emitting = false
@@ -265,7 +314,7 @@ func _dust(at: Vector2) -> void:
 	p.lifetime = 0.8
 	p.explosiveness = 0.9
 	p.emission_shape = CPUParticles2D.EMISSION_SHAPE_RECTANGLE
-	p.emission_rect_extents = Vector2(60, 6)
+	p.emission_rect_extents = Vector2(width, 6)
 	p.direction = Vector2.UP
 	p.spread = 70.0
 	p.initial_velocity_min = 15.0

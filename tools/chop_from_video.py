@@ -1,6 +1,6 @@
 """Turns the green-screen axe-chop video (H3, settler facing right) into a pixel-art strip.
 
-Used for assets/characters/settler_chop_right.png (MiniMax_H3_00025) and
+Used for assets/characters/settler_chop_right.png (ClipProj_H3_00013) and
 settler_chop_left.png (ClipProj_H3_00005).
 Usage, from any folder:
   1. Extract every frame of the video into <work>/frames:
@@ -24,13 +24,23 @@ PROJ = sys.argv[2] if len(sys.argv) > 2 else '.'
 SIDE = sys.argv[3] if len(sys.argv) > 3 else 'right'
 # Video frames used (24 fps): rest, wind-up, swing, then back to rest.
 # The long still holds are left out; the game holds those poses itself.
+# 'ref' = the standing frame used for the size and the foot point (default: the
+# first frame); 'out' = output file name in assets/characters/.
 VIDEOS = {
-    # MiniMax_H3_00025 (facing right): impact = video frame 42.
-    'right': {'frames': [1] + list(range(4, 17)) + list(range(38, 44)) + list(range(77, 83)), 'impact': 42},
+    # ClipProj_H3_00018 (facing right): ~12 fps (most frames show twice), so only
+    # the distinct ones; wind-up to 12, swing 20-21, impact = video frame 23.
+    'right': {'frames': [1, 6, 7, 9, 10, 11, 12, 20, 21, 23, 33, 35, 37], 'impact': 23},
+    # ClipProj_H3_00016 (running right): one clean loop = video frames 5-17
+    # (frame 18 matches 5). Sized and anchored on the standing frame 1.
+    # Not in use: the game keeps the original run strip (writing this
+    # overwrites assets/characters/settler_run_right.png).
+    'run_right': {'frames': list(range(5, 18)), 'ref': 1, 'out': 'settler_run_right.png'},
     # ClipProj_H3_00005 (facing left): impact = video frame 23, held at 24.
     'left': {'frames': [1] + list(range(3, 16)) + list(range(19, 25)) + list(range(31, 37)), 'impact': 23},
 }
 FRAMES = VIDEOS[SIDE]['frames']
+REF = VIDEOS[SIDE].get('ref', FRAMES[0])
+OUT = VIDEOS[SIDE].get('out', f'settler_chop_{SIDE}.png')
 
 
 def load(i):
@@ -62,7 +72,8 @@ def bbox(m):
 frames = [(despill(load(i)), key(load(i))) for i in FRAMES]
 idle = np.asarray(Image.open(f'{PROJ}/assets/characters/settler_right.png').convert('RGBA'))
 target_h = idle.shape[0]
-b0 = bbox(frames[0][1])
+ref_mask = key(load(REF))
+b0 = bbox(ref_mask)
 k = target_h / (b0[3] - b0[1])
 boxes = [bbox(m) for _, m in frames]
 x0 = min(b[0] for b in boxes); y0 = min(b[1] for b in boxes)
@@ -105,10 +116,10 @@ for i, (c, m) in enumerate(small):
     edge = m & ~ndimage.binary_erosion(m, structure=[[0, 1, 0], [1, 1, 1], [0, 1, 0]], border_value=0)
     img[edge] = dark
     strip.paste(Image.fromarray(np.dstack([img, m * 255]).astype(np.uint8), 'RGBA'), (i * W, 0))
-strip.save(f'{PROJ}/assets/characters/settler_chop_{SIDE}.png')
+strip.save(f'{PROJ}/assets/characters/{OUT}')
 
 # Foot point: middle of the feet in the rest pose, bottom of the frame.
-fm = frames[0][1][b0[3] - 25:b0[3], :]
+fm = ref_mask[b0[3] - 25:b0[3], :]
 fx = np.where(fm)[1].mean()
 foot = (round((fx - x0) * k), round((b0[3] - y0) * k))
-print(f'frames={len(small)} size=({W}, {H}) offset=({-foot[0]}, {-foot[1] + 1}) impact_index={FRAMES.index(VIDEOS[SIDE]["impact"])}')
+print(f'frames={len(small)} size=({W}, {H}) offset=({-foot[0]}, {-foot[1] + 1}) impact_index={FRAMES.index(VIDEOS[SIDE]["impact"]) if "impact" in VIDEOS[SIDE] else "-"}')
