@@ -757,11 +757,13 @@ var _plant_push: Node
 
 func _ready() -> void:
 	_setup_input()
-	_apply_cursor()
-	if not get_viewport().size_changed.is_connected(_apply_cursor):
-		get_viewport().size_changed.connect(_apply_cursor)
 	GameSettings.load_settings()
 	GameSettings.apply_display(get_window())
+	# Our arrow (also set in Project Settings > Display > Mouse Cursor, so it's
+	# there from the first frame); re-applied after going fullscreen / resizing.
+	_apply_cursor.call_deferred()
+	if not get_viewport().size_changed.is_connected(_apply_cursor):
+		get_viewport().size_changed.connect(_apply_cursor)
 	GameSettings.apply_volume()
 	_apply_advanced_overrides()
 	_setup_music()
@@ -900,7 +902,7 @@ func _sync_ore_material() -> void:
 func _apply_cursor() -> void:
 	var big := DisplayServer.window_get_size().y >= 1440
 	var tex: Texture2D = load("res://assets/ui/cursor_2x.png" if big else "res://assets/ui/cursor.png")
-	Input.set_custom_mouse_cursor(tex, Input.CURSOR_ARROW, Vector2(1, 1) * (2 if big else 1))
+	Input.set_custom_mouse_cursor(tex, Input.CURSOR_ARROW, Vector2.ZERO)        # hotspot = the tip (top-left pixel)
 
 
 ## Pushes the Wind settings to the shared prop shader.
@@ -1213,7 +1215,8 @@ func _on_dig_hit(point: Vector2, side: int) -> void:
 
 
 ## The watering can pours (it never runs out for now): a thin stream of drops
-## from the spout to the ground and a little splash where it lands.
+## from the spout to the ground and a little splash where it lands. Watering a
+## stump regrows its tree (tree_chopping.gd regrow_at).
 func _on_water_pour(from: Vector2, side: int, seconds: float) -> void:
 	var drops := CPUParticles2D.new()
 	drops.amount = 22
@@ -1243,6 +1246,9 @@ func _on_water_pour(from: Vector2, side: int, seconds: float) -> void:
 	splash.z_index = 1
 	world.add_child(splash)
 	splash.global_position = from + Vector2(side * 6.0, 12.0)          # where the stream lands
+	# Water on a stump: the tree grows back right away.
+	if _chopping and _chopping.regrow_at(splash.global_position):
+		get_tree().create_timer(0.3, false).timeout.connect(_rebuild_darkness)
 	get_tree().create_timer(seconds, false).timeout.connect(func():
 		for p in [drops, splash]:
 			if is_instance_valid(p):
@@ -1853,6 +1859,7 @@ func _setup_input() -> void:
 		"move_left": [KEY_A, KEY_LEFT],
 		"move_right": [KEY_D, KEY_RIGHT],
 		"sprint": [KEY_SHIFT],
+		"sneak": [KEY_CTRL],
 		"regenerate": [KEY_R],
 		"god_mode": [KEY_F],
 		"skip_time": [KEY_N],

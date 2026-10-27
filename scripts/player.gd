@@ -98,6 +98,20 @@ const WATER := {
 		"durations": {0: 0.5, 1: 2.0, 2: 2.0, 3: 2.0, 4: 2.0, 5: 4.0, 6: 4.0, 7: 4.0, 8: 4.0, 9: 3.0,
 			10: 2.0, 11: 2.0, 12: 2.0, 13: 2.0}},
 }
+## Sneaking (hold Ctrl), from ClipProj_H3_00031 via tools/chop_from_video.py
+## (side sneak_right): frame 0 = crouched still, frames 1-4 = crouched steps.
+## Side view only (faces his last sideways side), mirrored for left. He's
+## tilted forward a little (SNEAK_LEAN radians, around the feet) because the
+## filmed crouch stands too upright.
+const SNEAK := {"tex": preload("res://assets/characters/settler_sneak_right.png"), "frames": 5,
+	"size": Vector2i(32, 44), "offset": Vector2(-10, -43), "fps": 5.5}
+const SNEAK_LEAN := 0.14
+## Sneaking speed x walk speed.
+var sneak_speed_scale := 0.45
+## True while the local player sneaks (Ctrl): slow, no footstep sounds, no
+## footprints; the AI werewolf only notices you from closer (werewolf.gd).
+var sneaking := false
+
 ## Where the spout tip is while pouring (world px from the feet, facing right).
 const SPOUT := Vector2(29, -11)
 ## The can starts pouring: from = the spout, seconds = how long it pours.
@@ -111,7 +125,17 @@ const MINE_PLACEHOLDER := {"windup": 0.3, "strike": 0.07, "recover": 0.28, "back
 ## Tools that swing on left click.
 const SWING_TOOLS := ["axe", "pickaxe", "spade", "watering_can"]
 
-const STEP_SOUND := "res://assets/sounds/footsteps/grass_step.wav"   # default footstep
+## Default footsteps: soft grass steps, three takes played in turn so walking
+## doesn't sound like one sample on repeat (tools/make_sounds.py). The werewolf
+## sets its own (werewolf.gd).
+const STEP_SOUNDS := ["res://assets/sounds/footsteps/grass_soft_1.wav",
+		"res://assets/sounds/footsteps/grass_soft_2.wav", "res://assets/sounds/footsteps/grass_soft_3.wav"]
+const STEP_SOUND := "res://assets/sounds/footsteps/grass_soft_1.wav"   # first take (kept for older code)
+## Whoosh per swinging tool (tools/make_sounds.py), heard as the tool comes down.
+const SWING_SOUNDS := {"axe": "res://assets/sounds/swing_axe.wav", "pickaxe": "res://assets/sounds/swing_pickaxe.wav",
+		"spade": "res://assets/sounds/swing_spade.wav", "watering_can": "res://assets/sounds/swing_can.wav"}
+## How long before the hit the whoosh starts (its loudest part is near its end).
+const SWING_LEAD := 0.24
 const DEFAULT_STEPS := [0.0, 0.5]
 
 ## The character you control has the camera and the light; others (an AI
@@ -153,7 +177,12 @@ var _idle := 0.0
 var footsteps_enabled := true
 var step_volume_db := -6.0         # same every step; the sound itself is never pitched
 var step_hear_distance := 600.0    # world px; how far others hear these steps
-var step_sound: AudioStream        # current footstep sound (null = STEP_SOUND); change with set_step_sound()
+var step_sound: AudioStream        # current footstep sound (null = STEP_SOUNDS); change with set_step_sound()
+var step_takes: Array = STEP_SOUNDS   # default footstep files, played in turn (werewolf.gd sets its own)
+var swing_volume_db := -8.0
+var _takes: Array[AudioStream] = []
+var _take_i := 0
+var _custom_step := false
 var _step_player: Node             # AudioStreamPlayer (you) or AudioStreamPlayer2D (others)
 var _step_phase := -1.0            # last run-cycle phase (0..1); -1 = not running
 var _step_cooldown := 0.0
@@ -252,10 +281,14 @@ func _physics_process(_delta: float) -> void:
 		dir = Vector2.ZERO                  # stand still while swinging
 	_moving = dir.length() > 0.05
 
+	sneaking = is_local and not ai_controlled and input_enabled and not god_mode \
+			and InputMap.has_action("sneak") and Input.is_action_pressed("sneak")
 	var sprint_on := ai_sprint if ai_controlled else (input_enabled and Input.is_action_pressed("sprint"))
-	var sprinting := sprint_on and _moving   # no stamina: sprint forever
+	var sprinting := sprint_on and _moving and not sneaking   # no stamina: sprint forever
 
 	var speed := sprint_speed if sprinting else walk_speed
+	if sneaking:
+		speed = walk_speed * sneak_speed_scale
 	velocity = Vector2(dir.x, dir.y * DEPTH_SQUASH) * speed + knockback
 	knockback = knockback.move_toward(Vector2.ZERO, 1400.0 * _delta)
 	if god_mode:
@@ -292,6 +325,8 @@ func _start_chop() -> void:
 	chopping = true
 	_moving = false
 	_swing_tool = held_tool
+	sprite.rotation = 0.0                         # no sneaking lean while swinging
+	_swing_whoosh.call_deferred()
 	if held_tool == "spade" or held_tool == "watering_can":
 		var table: Dictionary = DIG if held_tool == "spade" else WATER
 		var prefix := "dig_" if held_tool == "spade" else "water_"
@@ -333,6 +368,37 @@ func _start_mine_placeholder() -> void:
 	t.tween_callback(_emit_hit)
 	t.tween_property(sprite, "rotation", 0.0, m.recover * k).set_ease(Tween.EASE_IN_OUT).set_trans(Tween.TRANS_SINE)
 	t.tween_callback(_end_swing)
+
+
+## The tool's whoosh, timed so it peaks as the tool comes down on the hit frame.
+func _swing_whoosh() -> void:
+	var path: String = SWING_SOUNDS.get(_swing_tool, "")
+	if path == "" or not ResourceLoader.exists(path) or not chopping:
+		return
+	var delay := 0.25                              # placeholder pickaxe swing (no strip)
+	var anim := String(sprite.animation)
+	for prefix in ["chop_", "mine_", "dig_", "water_"]:
+		if anim.begins_with(prefix):
+			var table: Dictionary = {"chop_": CHOP, "mine_": MINE, "dig_": DIG, "water_": WATER}[prefix]
+			var w: Dictionary = table.get(anim.trim_prefix(prefix), {})
+			if w.is_empty():
+				break
+			var frames := 0.0
+			for f in w.impact:
+				frames += float(w.durations.get(f, 1.0))
+			delay = frames / w.fps / maxf(absf(sprite.speed_scale), 0.05)
+	if _swing_tool == "watering_can":
+		delay *= 0.35                              # the can's swish is the lift, not a strike
+	get_tree().create_timer(maxf(delay - SWING_LEAD, 0.0), false).timeout.connect(func():
+		if not is_instance_valid(self):
+			return
+		var a: Node = AudioStreamPlayer.new() if is_local else AudioStreamPlayer2D.new()
+		a.stream = load(path)
+		a.volume_db = swing_volume_db
+		a.pitch_scale = randf_range(0.95, 1.06)
+		add_child(a)
+		a.play()
+		a.finished.connect(a.queue_free))
 
 
 func _emit_hit() -> void:
@@ -382,8 +448,11 @@ func _setup_footsteps() -> void:
 	# Your own steps: plain (not positional), so they always sound the same.
 	# Other characters: positional, so you hear where they are and how far.
 	_step_player = AudioStreamPlayer.new() if is_local else AudioStreamPlayer2D.new()
-	if step_sound == null and ResourceLoader.exists(STEP_SOUND):
-		step_sound = load(STEP_SOUND)            # no file = no footstep sound
+	for path: String in step_takes:
+		if ResourceLoader.exists(path):
+			_takes.append(load(path))
+	if step_sound == null and not _takes.is_empty():
+		step_sound = _takes[0]                   # no files = no footstep sound
 	_step_player.stream = step_sound
 	_step_player.max_polyphony = 2          # let the tail of one step finish under the next
 	add_child(_step_player)
@@ -394,8 +463,9 @@ func _setup_footsteps() -> void:
 ## per ground type). null = back to the default STEP_SOUND. Takes effect from
 ## the next step; a step that is already playing finishes first.
 func set_step_sound(stream: AudioStream) -> void:
-	if stream == null and ResourceLoader.exists(STEP_SOUND):
-		stream = load(STEP_SOUND)
+	_custom_step = stream != null
+	if stream == null and not _takes.is_empty():
+		stream = _takes[0]
 	if stream == step_sound:
 		return
 	step_sound = stream
@@ -449,6 +519,9 @@ func _play_step() -> void:
 	if _step_cooldown > 0.0:                    # guards against key-tapping spam
 		return
 	_step_cooldown = 0.09
+	if not _custom_step and _takes.size() > 1:
+		_take_i = (_take_i + 1) % _takes.size()  # next take
+		step_sound = _takes[_take_i]
 	if step_sound == null:
 		return                                  # no footstep sound set
 	if _step_player.stream != step_sound:
@@ -472,6 +545,15 @@ func _update_idle(delta: float) -> void:
 func _update_sprite() -> void:
 	# 8 directions: pick the 45-degree sector of the facing direction.
 	# Sector 0 = right, then clockwise (screen y points down).
+	if sneaking and sprite.sprite_frames.has_animation("sneak"):
+		# Crouched, side view, leaning forward; steps only while moving.
+		_play("sneak" if _moving else "sneak_still")
+		sprite.flip_h = _side < 0
+		sprite.speed_scale = 1.0
+		sprite.rotation = SNEAK_LEAN * _side
+		_apply_flip_offset()
+		return
+	sprite.rotation = 0.0
 	var sector := posmod(int(round(facing.angle() / (PI / 4.0))), 8)
 	var view: String = ["right", "down_right", "down", "down_right", "right", "up_right", "up", "up_right"][sector]
 	sprite.flip_h = sector >= 3 and sector <= 5     # left side mirrors the right
@@ -528,6 +610,23 @@ func _build_frames() -> SpriteFrames:
 			at.region = Rect2(Vector2(i * r.size.x, 0), Vector2(r.size))
 			sf.add_frame(run, at)
 		_offsets[run] = r.offset
+
+	# Sneaking: "sneak_still" = the crouched frame, "sneak" = the step loop.
+	sf.add_animation("sneak_still")
+	var st := AtlasTexture.new()
+	st.atlas = SNEAK.tex
+	st.region = Rect2(Vector2.ZERO, Vector2(SNEAK.size))
+	sf.add_frame("sneak_still", st)
+	_offsets["sneak_still"] = SNEAK.offset
+	sf.add_animation("sneak")
+	sf.set_animation_loop("sneak", true)
+	sf.set_animation_speed("sneak", SNEAK.fps)
+	for i in range(1, SNEAK.frames):
+		var at := AtlasTexture.new()
+		at.atlas = SNEAK.tex
+		at.region = Rect2(Vector2(i * SNEAK.size.x, 0), Vector2(SNEAK.size))
+		sf.add_frame("sneak", at)
+	_offsets["sneak"] = SNEAK.offset
 
 	var swings := []
 	for side: String in CHOP:

@@ -10,6 +10,14 @@ signal tree_felled(tree: Node2D)
 signal tree_cut(tree: Node2D, image: String)
 ## A stump was chopped out (main.gd gives a little experience).
 signal stump_cleared(stump: Node2D)
+## A stump was watered and the tree is back (main.gd redraws the darkness).
+signal tree_regrown(tree: Node2D)
+
+## Watering a stump regrows the tree right away: a felled tree comes back as
+## exactly the tree that stood there (its look comes from its map position);
+## other stumps grow a pine (tall ones from pine_tall_stump).
+const REGROW_DEFAULT := {"pine_tall_stump.png": "res://assets/props/pine_tall.tscn",
+		"stump.png": "res://assets/props/pine_dark.tscn"}
 
 ## Prop images that count as trees (the same names as scripts/darkness.gd).
 const LIVING := ["pine_tall.png", "pine_dark.png"]
@@ -50,6 +58,7 @@ var face_delay := 0.3             # split trees: seconds into the fall before th
 var _hits := {}                   # tree instance id (stumps: "stump@x,y") -> hits so far
 var _pending_clear := {}          # stump key -> true: chopped through while its tree was still falling
 var _pending_shake := {}          # stump key -> true: hit while its tree was falling (no stump to wobble yet)
+var _felled_from := {}            # stump key -> scene path of the tree that stood there
 var _chop_sound: AudioStream
 var _fall_sound: AudioStream
 
@@ -378,6 +387,8 @@ func _replace_with_stump(tree: Node2D) -> void:
 	var scene_path: String = spec.stump_scene if split else STUMP_SCENE
 	var stump_scale := tree.scale.x * float(STUMP_SCALE.get(_image(tree), 0.7))
 	var at := tree.position
+	if tree.scene_file_path != "":
+		_felled_from[_stump_key(tree)] = tree.scene_file_path      # for regrowing it later
 	var stump_id := _scene_tile(layer, scene_path) if layer else -1
 	if layer and stump_id >= 0 and tree.position == layer.map_to_local(layer.local_to_map(tree.position)):
 		# Painted/generated props are scene tiles: swap the tile.
@@ -478,3 +489,105 @@ func _sound(stream: AudioStream, at: Vector2, pitch: float) -> void:
 	player.get_parent().add_child(a)
 	a.play()
 	a.finished.connect(a.queue_free)
+
+
+# --- regrowing -------------------------------------------------------------------
+
+## Water landed at `point` (main.gd, from the watering can): if a stump is there,
+## the tree grows back at once. Returns true if one did.
+func regrow_at(point: Vector2, radius := 18.0) -> bool:
+	var stump := _stump_near(point, radius)
+	if stump == null:
+		return false
+	var key := _stump_key(stump)
+	var path: String = _felled_from.get(key, REGROW_DEFAULT.get(_image(stump), ""))
+	if path == "" or not ResourceLoader.exists(path):
+		return false
+	_felled_from.erase(key)
+	_hits.erase(key)
+	_pending_clear.erase(key)
+	_pending_shake.erase(key)
+	var layer := stump.get_parent() as TileMapLayer
+	var at := stump.position
+	var tile := _scene_tile(layer, path) if layer else -1
+	if layer and tile >= 0 and at == layer.map_to_local(layer.local_to_map(at)):
+		var cell := layer.local_to_map(at)
+		layer.erase_cell(cell)
+		layer.set_cell(cell, 0, Vector2i.ZERO, tile)
+		_grow_in.call_deferred(layer, at)
+	else:
+		var tree := (load(path) as PackedScene).instantiate() as Node2D
+		tree.position = at
+		stump.get_parent().add_child(tree)
+		stump.queue_free()
+		_grow(tree)
+	return true
+
+
+## The stump (not one that's falling or being dug out) whose trunk is near point.
+func _stump_near(point: Vector2, radius: float) -> Node2D:
+	var shape := CircleShape2D.new()
+	shape.radius = radius
+	var q := PhysicsShapeQueryParameters2D.new()
+	q.shape = shape
+	q.transform = Transform2D(0.0, point)
+	var best: Node2D = null
+	var best_d := INF
+	for r in player.get_world_2d().direct_space_state.intersect_shape(q, 16):
+		var body := r.collider as Node
+		if body == null or body.name != "Body":
+			continue
+		var prop := body.get_parent() as Node2D
+		if prop == null or prop.has_meta("clearing") or prop.has_meta("felling") or not _image(prop) in STUMPS:
+			continue
+		var d := prop.global_position.distance_to(point)
+		if d < best_d:
+			best_d = d
+			best = prop
+	return best
+
+
+## The new tree tile appears a moment later: grow it in.
+func _grow_in(layer: TileMapLayer, at: Vector2) -> void:
+	await get_tree().process_frame
+	await get_tree().process_frame
+	if not is_instance_valid(layer):
+		return
+	for c in layer.get_children():
+		if c is Node2D and c.position == at and _image(c) in LIVING + DEAD:
+			_grow(c)
+			return
+
+
+## Springs up from the stump: the art stretches up from the ground with a little
+## overshoot, a puff of leaves, and the darkness is redrawn for the new canopy.
+func _grow(tree: Node2D) -> void:
+	var sprite := tree.get_node_or_null("Sprite") as Node2D
+	if sprite:
+		sprite.scale = Vector2(1.0, 0.15)
+		var t := tree.create_tween()
+		t.tween_property(sprite, "scale", Vector2.ONE, 0.45).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	var p := CPUParticles2D.new()
+	p.one_shot = true
+	p.emitting = false
+	p.amount = 18
+	p.lifetime = 0.7
+	p.explosiveness = 0.9
+	p.emission_shape = CPUParticles2D.EMISSION_SHAPE_RECTANGLE
+	p.emission_rect_extents = Vector2(10, 4)
+	p.direction = Vector2.UP
+	p.spread = 50.0
+	p.initial_velocity_min = 30.0
+	p.initial_velocity_max = 70.0
+	p.gravity = Vector2(0, 90)
+	p.scale_amount_min = 1.0
+	p.scale_amount_max = 2.0
+	p.color = Color(0.45, 0.68, 0.32)
+	p.hue_variation_min = -0.04
+	p.hue_variation_max = 0.04
+	p.z_index = 1
+	p.global_position = tree.global_position + Vector2(0, -8)
+	player.get_parent().add_child(p)
+	p.emitting = true
+	get_tree().create_timer(1.2, false).timeout.connect(p.queue_free)
+	tree_regrown.emit(tree)

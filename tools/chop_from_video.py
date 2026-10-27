@@ -5,7 +5,8 @@ settler_chop_left.png (ClipProj_H3_00005) and the pickaxe swing
 settler_mine_right.png (ClipProj_H3_00021, side "mine_right") and
 settler_mine_left.png (ClipProj_H3_00023, side "mine_left"), and the spade dig
 settler_dig_right.png (ClipProj_H3_00025, side "dig_right"), and watering
-settler_water_right.png (ClipProj_H3_00029, side "water_right").
+settler_water_right.png (ClipProj_H3_00029, side "water_right"), and sneaking
+settler_sneak_right.png (ClipProj_H3_00031, side "sneak_right").
 Usage, from any folder:
   1. Extract every frame of the video into <work>/frames:
        ffmpeg -i chop.mp4 <work>/frames/f_%03d.png
@@ -17,6 +18,10 @@ settler_right.png, snaps the colours to the settler's own palette (plus a few
 greys for the axe head) and gives the silhouette the settler's dark outline.
 Writes settler_chop_right.png (horizontal strip) and prints the frame size and
 foot offset for scripts/player.gd. Needs numpy, scipy and Pillow.
+
+NOTE: the game's art has since been recoloured to the forest palette with
+tools/recolor.py. Re-running this script writes un-recoloured images, so run
+recolor.py on them afterwards (python3 tools/recolor.py <src dir> <out dir>).
 """
 import sys
 import numpy as np
@@ -61,6 +66,10 @@ VIDEOS = {
     # video's faint water is keyed out), lower it. Mirrored for facing left.
     'water_right': {'frames': [1, 7, 9, 11, 17, 19, 21, 23, 25, 27, 29, 31, 33, 35],
                     'impact': 19, 'out': 'settler_water_right.png'},
+    # ClipProj_H3_00031 (sneaking, facing right): strip frame 0 = crouched still
+    # (video 11), frames 1-4 = the crouched step loop (19, 23, 25, 27; 31 matches
+    # 19). Sized on the standing frame 1. Mirrored for facing left.
+    'sneak_right': {'frames': [11, 19, 23, 25, 27], 'ref': 1, 'out': 'settler_sneak_right.png'},
 }
 FRAMES = VIDEOS[SIDE]['frames']
 REF = VIDEOS[SIDE].get('ref', FRAMES[0])

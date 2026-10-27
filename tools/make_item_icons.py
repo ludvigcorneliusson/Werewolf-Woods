@@ -12,6 +12,10 @@ Each source is pixel art blown up ~12-35x. This script:
 Map props in PROP_ART (the copper ore node) only get step 1 -> assets/props/.
 
 Usage: python3 tools/make_item_icons.py <project dir>
+
+NOTE: the game's art has since been recoloured to the forest palette with
+tools/recolor.py. Re-running this script writes un-recoloured images, so run
+recolor.py on them afterwards (python3 tools/recolor.py <src dir> <out dir>).
 """
 import sys
 from collections import Counter

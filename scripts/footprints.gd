@@ -35,7 +35,9 @@ func _process(delta: float) -> void:
 			keep.append(p)
 	_prints = keep
 
-	if enabled and is_instance_valid(walker):
+	if enabled and is_instance_valid(walker) and walker.get("sneaking") == true:
+		_last = walker.global_position              # sneaking: careful steps leave no prints
+	elif enabled and is_instance_valid(walker):
 		var pos := walker.global_position
 		if _last == Vector2.INF:
 			_last = pos

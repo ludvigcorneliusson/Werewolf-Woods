@@ -32,6 +32,7 @@ var target: Node2D                 # the human to hunt
 var map_rect := Rect2()            # where to wander
 var sense_radius := 320.0          # starts chasing within this distance (world px)
 var lose_radius := 560.0           # gives up the chase beyond this
+var sneak_sense := 0.45            # sense_radius x this while the target sneaks
 var catch_radius := 20.0
 var search_time := 7.0             # seconds spent searching where it lost you
 var attack_interval := 1.2         # seconds between bites
@@ -58,7 +59,8 @@ func _init() -> void:
 	body_radius = 10.0
 	shadow_radius = 17.0
 	see_through_size = Vector2(19, 38)
-	# Same step sound, a bit louder and carrying further (you hear it before you see it).
+	# Its own heavy paw step, louder and carrying further (you hear it before you see it).
+	step_takes = ["res://assets/sounds/footsteps/werewolf_step.wav"]
 	step_volume_db = -3.0
 	step_hear_distance = 900.0
 
@@ -145,9 +147,11 @@ func _think(delta: float) -> void:
 		caught.emit(target)
 		return
 
+	# A sneaking target is only noticed from much closer (once chasing, it doesn't help).
+	var sense := sense_radius * (sneak_sense if target.get("sneaking") == true else 1.0)
 	match state:
 		State.WANDER:
-			if dist < sense_radius:
+			if dist < sense:
 				state = State.CHASE
 		State.CHASE:
 			if dist > lose_radius:
@@ -157,7 +161,7 @@ func _think(delta: float) -> void:
 				_last_seen = target.global_position
 		State.SEARCH:
 			_search_left -= delta
-			if dist < sense_radius:
+			if dist < sense:
 				state = State.CHASE
 			elif _search_left <= 0.0:
 				state = State.WANDER
