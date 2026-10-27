@@ -8,18 +8,18 @@
 radius = 6.0
 height = 52.0
 
-[node name="Log" type="Node2D" unique_id=24960154]
+[node name="Log" type="Node2D" unique_id=1702352669]
 script = ExtResource("1_5y10g")
 
-[node name="Sprite" type="Sprite2D" parent="." unique_id=947112196]
+[node name="Sprite" type="Sprite2D" parent="." unique_id=449905005]
 light_mask = 2
 material = ExtResource("2_35nbn")
 texture = ExtResource("3_uon73")
 centered = false
 offset = Vector2(-29, -21)
 
-[node name="Body" type="StaticBody2D" parent="." unique_id=1092567440]
+[node name="Body" type="StaticBody2D" parent="." unique_id=421554493]
 
-[node name="@CollisionShape2D@7" type="CollisionShape2D" parent="Body" unique_id=440964264]
+[node name="@CollisionShape2D@7" type="CollisionShape2D" parent="Body" unique_id=1799739790]
 rotation = 1.5707964
 shape = SubResource("CapsuleShape2D_n788o")

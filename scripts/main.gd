@@ -4,17 +4,30 @@ extends Node2D
 
 const MapGenerator := preload("res://scripts/map_generator.gd")
 const Player := preload("res://scripts/player.gd")
+const Darkness := preload("res://scripts/darkness.gd")
 const PlantPush := preload("res://scripts/plant_push.gd")
 ## Shared by every prop scene; we feed it the player position so trees fade
 ## when the player walks behind them.
 const PROP_MATERIAL := preload("res://assets/props/prop_material.tres")
 ## Same fade, plus per-prop colour variation (see scripts/varied_prop.gd).
 const VARIED_MATERIAL := preload("res://assets/props/varied_material.tres")
-const VISION_TEX_SIZE := 512
 
 ## false = use the hand-painted World node in main.tscn (default).
 ## true  = use the old procedural generator (R makes a new random map).
 @export var use_generated_map := false
+
+# --- Camera -------------------------------------------------------------------
+@export_group("Camera")
+## How close the camera is. 1 = far (1 world px per screen px at 1280x720), 3 = close.
+## Whole numbers keep pixel art perfectly even.
+@export_range(0.25, 6.0, 0.05) var camera_zoom := 1.0:
+	set(v):
+		camera_zoom = v
+		if player and player.camera:
+			player.camera.zoom = Vector2(v, v)
+## Allow zooming with the mouse wheel (handy for testing; off for normal play).
+@export var scroll_zoom := false
+@export_group("")
 
 # --- Fog of war ---------------------------------------------------------------
 # Select the Main node to tweak these in the Inspector. They also update live
@@ -35,8 +48,8 @@ const VISION_TEX_SIZE := 512
 	set(v):
 		fog_darkness = v
 		_apply_fog()
-## How far you can see, in world pixels (the settler is 43 px tall). Beyond this it is fully dark.
-@export_range(40.0, 800.0, 1.0, "suffix:px") var vision_radius := 175.0:
+## How far you can see, in world px (the settler is 43 px tall). Beyond this it is fully dark.
+@export_range(40.0, 1500.0, 1.0, "suffix:px") var vision_radius := 380.0:
 	set(v):
 		vision_radius = v
 		_apply_fog()
@@ -50,8 +63,8 @@ const VISION_TEX_SIZE := 512
 	set(v):
 		fog_density = v
 		_apply_fog()
-## Brightness of what you can see.
-@export_range(0.0, 3.0, 0.05) var vision_brightness := 1.1:
+## Brightness of what you can see (1 = normal).
+@export_range(0.0, 2.0, 0.05) var vision_brightness := 1.0:
 	set(v):
 		vision_brightness = v
 		_apply_fog()
@@ -65,10 +78,30 @@ const VISION_TEX_SIZE := 512
 	set(v):
 		vision_squash = v
 		_apply_fog()
-## Blur on the line-of-sight shadows behind trunks.
-@export_range(0.0, 10.0, 0.1) var shadow_softness := 2.0:
+## Size of the light cells (world px). Smaller = finer light (recalculation costs more).
+@export_range(6, 48, 1, "suffix:px") var light_cell_size := 16:
 	set(v):
-		shadow_softness = v
+		light_cell_size = v
+		_rebuild_darkness()
+## How much tree trunks block light (casts shadows behind them). 0 = not at all.
+@export_range(0.0, 1.5, 0.01) var trunk_shade := 1.0:
+	set(v):
+		trunk_shade = v
+		_rebuild_darkness()
+## How much tree canopies dim the light passing under them (darker forest). 0 = not at all.
+@export_range(0.0, 3.0, 0.01) var canopy_shade := 1.0:
+	set(v):
+		canopy_shade = v
+		_rebuild_darkness()
+## How much bushes, rocks and logs block light. 0 = not at all.
+@export_range(0.0, 3.0, 0.01) var prop_shade := 1.0:
+	set(v):
+		prop_shade = v
+		_rebuild_darkness()
+## How much the square cells are blended. 1 = visible squares, 2-4 = soft.
+@export_range(1, 4, 1) var cell_softness := 2:
+	set(v):
+		cell_softness = v
 		_apply_fog()
 
 # --- Wind ---------------------------------------------------------------------
@@ -170,23 +203,27 @@ const VISION_TEX_SIZE := 512
 var map: Node2D
 var world: Node2D
 var player: CharacterBody2D
-var darkness: CanvasModulate
+var darkness: CanvasModulate     # only tints the scene now (vision colour/brightness)
+var _dark: Node2D             # the organic darkness overlay
 var seed_value := 0
 
 var _hud_label: Label
-var _vision_tex: GradientTexture2D
 var _plant_push: Node
 
 
 func _ready() -> void:
 	_setup_input()
 
-	# Night: everything outside a light source fades to fog_color.
+	# Night: an organic darkness overlay with holes around the player and fires.
 	darkness = CanvasModulate.new()
 	add_child(darkness)
+	_dark = Darkness.new()
+	add_child(_dark)
 
 	player = Player.new()
 	add_child(player)
+	_dark.player = player
+	_dark.camera = player.camera
 	_apply_fog()
 
 	_build_hud()
@@ -199,6 +236,7 @@ func _ready() -> void:
 		_setup_painted_world()
 	_apply_wind()
 	_apply_idle()
+	_rebuild_darkness.call_deferred()
 	_plant_push = PlantPush.new()
 	_plant_push.player = player
 	_plant_push.props = world.get_node_or_null("Props") if is_instance_valid(world) else null
@@ -245,47 +283,48 @@ func _apply_plants() -> void:
 	_plant_push.damping = wobble_damping
 
 
-## Pushes the Fog settings to the darkness and the player's vision light.
+## Pushes the Fog settings to the darkness overlay.
 func _apply_fog() -> void:
-	if darkness == null or player == null or player.light == null:
+	if darkness == null or player == null or _dark == null:
 		return
-	darkness.visible = fog_enabled
-	darkness.color = Color.WHITE.lerp(fog_color, fog_darkness)
-	var light: PointLight2D = player.light
-	light.enabled = fog_enabled
-	light.energy = vision_brightness
-	light.color = vision_tint
-	light.shadow_filter_smooth = shadow_softness
-	var tex := _make_vision_texture()
-	if light.texture != tex:
-		light.texture = tex
-	light.texture_scale = vision_radius * 2.0 / VISION_TEX_SIZE
+	# Scene tint inside the light (the old vision colour/brightness).
+	darkness.color = (vision_tint * vision_brightness) if fog_enabled else Color.WHITE
+	darkness.visible = true
+	if player.light:
+		player.light.enabled = false            # darkness is drawn by the overlay now
+	_dark.visible = fog_enabled
+	_dark.vision_radius = vision_radius
+	_dark.squash = vision_squash
+	_dark.start = fog_start
+	_dark.density = fog_density
+	_dark.dark_color = fog_color
+	_dark.darkness = fog_darkness
+	_dark.cell = light_cell_size
+	_dark.trunk_absorption = trunk_shade
+	_dark.canopy_absorption = canopy_shade
+	_dark.prop_absorption = prop_shade
+	_dark.smoothness = cell_softness
+	_dark.apply(true)
 
 
-## Radial light texture: fully bright up to fog_start, then fades to zero at the
-## edge following fog_density. Outside the light only fog_color remains.
-func _make_vision_texture() -> Texture2D:
-	if _vision_tex == null:
-		_vision_tex = GradientTexture2D.new()
-		_vision_tex.fill = GradientTexture2D.FILL_RADIAL
-		_vision_tex.fill_from = Vector2(0.5, 0.5)
-		_vision_tex.fill_to = Vector2(0.5, 0.0)
-		_vision_tex.width = VISION_TEX_SIZE
-	var g := Gradient.new()
-	var offsets := PackedFloat32Array()
-	var colors := PackedColorArray()
-	var steps := 32
-	for i in steps + 1:
-		var t := float(i) / steps
-		var k := clampf((t - fog_start) / maxf(1.0 - fog_start, 0.001), 0.0, 1.0)
-		var a := pow(1.0 - smoothstep(0.0, 1.0, k), fog_density)
-		offsets.append(t)
-		colors.append(Color(1, 1, 1, a))
-	g.offsets = offsets
-	g.colors = colors
-	_vision_tex.gradient = g
-	_vision_tex.height = maxi(int(VISION_TEX_SIZE * vision_squash), 8)
-	return _vision_tex
+## Rebuilds which cells hold tree trunks (from the props) and the campfire light.
+func _rebuild_darkness() -> void:
+	if _dark == null or not is_instance_valid(world):
+		return
+	_apply_fog()
+	var props := world.get_node_or_null("Props")
+	if props:
+		_dark.build(props, _map_rect())
+
+
+## Map area = the painted ground.
+func _map_rect() -> Rect2:
+	var ground := world.get_node_or_null("Ground") as TileMapLayer
+	if ground == null or ground.get_used_rect().size == Vector2i.ZERO:
+		return Rect2(-2000, -2000, 4000, 4000)
+	var c := Vector2(ground.tile_set.tile_size)
+	var r := ground.get_used_rect()
+	return Rect2(ground.to_global(Vector2(r.position) * c), Vector2(r.size) * c)
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -293,7 +332,10 @@ func _unhandled_input(event: InputEvent) -> void:
 		_new_map(randi())
 	elif event.is_action_pressed("toggle_fog"):
 		fog_enabled = not fog_enabled
-	elif event is InputEventMouseButton and event.pressed:
+	elif event.is_action_pressed("toggle_fullscreen"):
+		var w := get_window()
+		w.mode = Window.MODE_WINDOWED if w.mode in [Window.MODE_FULLSCREEN, Window.MODE_EXCLUSIVE_FULLSCREEN] else Window.MODE_FULLSCREEN
+	elif scroll_zoom and event is InputEventMouseButton and event.pressed:
 		var cam: Camera2D = player.camera
 		if event.button_index == MOUSE_BUTTON_WHEEL_UP:
 			cam.zoom = (cam.zoom * 1.15).clamp(Vector2(0.12, 0.12), Vector2(6, 6))
@@ -330,10 +372,10 @@ func _setup_painted_world() -> void:
 	player.reparent(world)
 	var spawn := world.get_node_or_null("Spawn")
 	player.global_position = spawn.global_position if spawn else Vector2.ZERO
-	player.camera.zoom = Vector2(3, 3)         # pixel art: 1 art pixel = 3 screen px
+	player.camera.zoom = Vector2(camera_zoom, camera_zoom)   # Camera settings on Main
 	_add_world_borders()
 	player.camera.reset_smoothing()
-	_hud_label.text = "WASD move · Shift sprint · F toggle fog · Mouse wheel zoom"
+	_hud_label.text = "WASD move · Shift sprint · F toggle fog · F11 fullscreen" + (" · Mouse wheel zoom" if scroll_zoom else "")
 
 
 func _add_world_borders() -> void:
@@ -368,8 +410,9 @@ func _add_world_borders() -> void:
 
 
 func _build_hud() -> void:
-	# CanvasLayer is not affected by the CanvasModulate darkness.
+	# CanvasLayer is not affected by the darkness (layer 2 = above it).
 	var hud := CanvasLayer.new()
+	hud.layer = 2
 	add_child(hud)
 
 	_hud_label = Label.new()
@@ -388,6 +431,7 @@ func _setup_input() -> void:
 		"sprint": [KEY_SHIFT],
 		"regenerate": [KEY_R],
 		"toggle_fog": [KEY_F],
+		"toggle_fullscreen": [KEY_F11],
 	}
 	for action in bindings:
 		if InputMap.has_action(action):

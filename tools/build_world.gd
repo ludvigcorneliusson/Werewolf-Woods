@@ -18,7 +18,11 @@ extends SceneTree
 # instance) and the fade + colour-variation material.
 #   foot:   px above the image bottom where the prop touches the ground (= origin, y-sort line)
 #   solid:  collision footprint - {"circle": r}, {"ellipse": Vector2(rx, ry)},
-#           {"capsule": Vector2(radius, length)} (lying along x), or {} = walk through
+#           {"capsule": Vector2(radius, length)} (lying along x), or {} = walk through.
+#           Optional "at": Vector2 offset and "angle": degrees. {"multi": [shape, shape]} for
+#           several pieces. Collision is mirrored along with the sprite.
+#   vision_open_inside: true = the vision blocker only blocks from outside, so a player
+#           standing inside it (a bush) can still see out
 #   vision: blocks line of sight with an ellipse (rx, ry), or Vector2.ZERO
 #   big:    true = always visible as a silhouette (like trees); false = small ground
 #           cover that hides in line-of-sight shadow like the ground does
@@ -41,6 +45,16 @@ const PROPS := [
 	{"name": "grass_tuft", "foot": 1, "solid": {}, "vision": Vector2.ZERO, "big": false, "vary": {"sway": 0.8, "bend": 1.3}},
 	{"name": "mushroom", "foot": 1, "solid": {}, "vision": Vector2.ZERO, "big": false, "vary": {"bend": 0.3}},
 	{"name": "mushroom_brown", "foot": 1, "solid": {}, "vision": Vector2.ZERO, "big": false, "vary": {"bend": 0.3}},
+	# Bushes: walk into them to hide; they block line of sight from outside.
+	{"name": "bush_small", "foot": 3, "solid": {}, "vision": Vector2(13, 5), "vision_open_inside": true, "big": true,
+		"vary": {"sway": 0.35, "bend": 0.6}},
+	{"name": "bush_big", "foot": 3, "solid": {}, "vision": Vector2(24, 8), "vision_open_inside": true, "big": true,
+		"vary": {"sway": 0.3, "bend": 0.4}},
+	{"name": "stump_log", "foot": 3, "big": true, "vision": Vector2.ZERO,
+		"solid": {"multi": [{"ellipse": Vector2(9, 4), "at": Vector2(-27, -11)},
+			{"capsule": Vector2(5, 50), "at": Vector2(12, -9), "angle": 18.0}]}},
+	{"name": "fallen_tree", "foot": 9, "big": true, "vision": Vector2.ZERO,
+		"solid": {"capsule": Vector2(6, 94), "at": Vector2(0, -5)}},
 	{"name": "pebble", "foot": 1, "solid": {}, "vision": Vector2.ZERO, "big": false},
 	{"name": "stick", "foot": 2, "solid": {}, "vision": Vector2.ZERO, "big": false},
 ]
@@ -132,29 +146,17 @@ func _make_prop(p: Dictionary, material: Material) -> PackedScene:
 		var body := StaticBody2D.new()
 		body.name = "Body"
 		_add(root, root, body)
-		if solid.has("circle"):
-			var shape := CircleShape2D.new()
-			shape.radius = solid.circle
-			var cs := CollisionShape2D.new()
-			cs.shape = shape
-			_add(root, body, cs)
-		elif solid.has("capsule"):
-			var shape := CapsuleShape2D.new()
-			shape.radius = solid.capsule.x
-			shape.height = solid.capsule.y
-			var cs := CollisionShape2D.new()
-			cs.shape = shape
-			cs.rotation = PI / 2.0          # lying along x
-			_add(root, body, cs)
-		elif solid.has("ellipse"):
-			var cp := CollisionPolygon2D.new()
-			cp.polygon = _ellipse(solid.ellipse)
-			_add(root, body, cp)
+		for piece in solid.get("multi", [solid]):
+			_add_shape(root, body, piece)
 
 	var occ_size: Vector2 = p.vision
 	if occ_size != Vector2.ZERO:
 		var op := OccluderPolygon2D.new()
 		op.polygon = _ellipse(occ_size)
+		if p.get("vision_open_inside", false):
+			# One-sided: only edges facing a light outside cast shadows, so a light
+			# (the player's vision) inside the bush isn't blocked.
+			op.cull_mode = OccluderPolygon2D.CULL_CLOCKWISE
 		var occ := LightOccluder2D.new()
 		occ.name = "VisionBlocker"
 		occ.occluder = op
@@ -163,6 +165,33 @@ func _make_prop(p: Dictionary, material: Material) -> PackedScene:
 	var packed := PackedScene.new()
 	packed.pack(root)
 	return packed
+
+
+func _add_shape(root: Node, body: Node, piece: Dictionary) -> void:
+	var at: Vector2 = piece.get("at", Vector2.ZERO)
+	var angle := deg_to_rad(float(piece.get("angle", 0.0)))
+	if piece.has("circle"):
+		var shape := CircleShape2D.new()
+		shape.radius = piece.circle
+		var cs := CollisionShape2D.new()
+		cs.shape = shape
+		cs.position = at
+		_add(root, body, cs)
+	elif piece.has("capsule"):
+		var shape := CapsuleShape2D.new()
+		shape.radius = piece.capsule.x
+		shape.height = piece.capsule.y
+		var cs := CollisionShape2D.new()
+		cs.shape = shape
+		cs.position = at
+		cs.rotation = PI / 2.0 + angle      # lying along x, then tilted
+		_add(root, body, cs)
+	elif piece.has("ellipse"):
+		var cp := CollisionPolygon2D.new()
+		cp.polygon = _ellipse(piece.ellipse)
+		cp.position = at
+		cp.rotation = angle
+		_add(root, body, cp)
 
 
 func _ellipse(r: Vector2) -> PackedVector2Array:

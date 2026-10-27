@@ -125,9 +125,9 @@ func _initialize() -> void:
 	light.energy = 1.35
 	light.texture = _light_texture()
 	light.texture_scale = 190.0 * 2.0 / 512.0
-	light.range_item_cull_mask = 1 | 2
-	light.shadow_enabled = true
-	light.shadow_item_cull_mask = 1
+	light.range_item_cull_mask = 1 | 2 | 4     # 4 = characters
+	light.shadow_enabled = false             # no shadows behind trees
+	light.shadow_item_cull_mask = 1 | 4
 	light.shadow_filter = PointLight2D.SHADOW_FILTER_PCF5
 	light.shadow_filter_smooth = 2.0
 	_add(root, root, light)

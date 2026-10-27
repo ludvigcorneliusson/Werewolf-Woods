@@ -25,7 +25,24 @@ uniform float wind_lean = 1.0;          // constant lean downwind, world px at t
 uniform float wave_spread = 0.003;      // how much the timing shifts across the map (0 = all in sync)
 uniform vec2 wind_dir = vec2(1.0, 0.25);
 
+// Night darkness (set by scripts/darkness.gd). The whole prop takes the light at
+// its BASE, so tall props are never cut by their own shadow.
+uniform sampler2D dk_player_light : filter_linear, repeat_disable;
+uniform sampler2D dk_static_light : filter_linear, repeat_disable;
+uniform vec2 dk_player_origin;
+uniform vec2 dk_player_size = vec2(1.0);
+uniform vec2 dk_static_origin;
+uniform vec2 dk_static_size = vec2(1.0);
+uniform float dk_static_strength = 1.0;
+uniform vec3 dk_dark_color = vec3(0.0);
+uniform float dk_darkness = 0.0;          // 0 = no darkness (fog off)
+uniform float dk_radius = 380.0;          // the player's light, for proximity lighting of props
+uniform float dk_squash = 0.78;
+uniform float dk_start = 0.3;
+uniform float dk_density = 1.5;
+
 varying vec2 world_pos;
+varying float base_lit;
 varying float base_y;
 varying vec2 base_pos;
 varying vec4 variance;
@@ -34,6 +51,19 @@ varying float sway;
 void vertex() {
 	base_pos = (MODEL_MATRIX * vec4(0.0, 0.0, 0.0, 1.0)).xy;   // node origin = foot of the prop
 	base_y = base_pos.y;
+	// Props are lit by PROXIMITY to the player (no shadows on props - those are
+	// only on the ground). Distance is measured from the player to the closest
+	// point on the prop's trunk line (per sprite corner: bottom = base, top = up
+	// to the prop's top), with the same fade as the ground light.
+	float vy = (MODEL_MATRIX * vec4(VERTEX, 0.0, 1.0)).y;
+	vec2 eye = player_pos - vec2(0.0, 16.0);
+	vec2 sp = vec2(base_pos.x, clamp(eye.y, min(vy, base_pos.y), base_pos.y));
+	float r = length((sp - eye) * vec2(1.0, 1.0 / dk_squash)) / max(dk_radius, 1.0);
+	float k = clamp((r - dk_start) / max(1.0 - dk_start, 0.001), 0.0, 1.0);
+	float lp = pow(1.0 - smoothstep(0.0, 1.0, k), dk_density);
+	vec2 su = (base_pos - dk_static_origin) / dk_static_size;
+	float ls = (su.x < 0.0 || su.y < 0.0 || su.x > 1.0 || su.y > 1.0) ? 0.0 : textureLod(dk_static_light, su, 0.0).r;
+	base_lit = clamp(max(lp, ls * dk_static_strength), 0.0, 1.0);
 	variance = COLOR;
 	sway = color_variance ? clamp((COLOR.a - 0.5) * 2.0, 0.0, 1.0) : 0.0;
 	if (sway > 0.0 && UV.y < 0.5) {
@@ -80,4 +110,5 @@ void fragment() {
 	float near = 1.0 - smoothstep(fade_radius * 0.6, fade_radius, length(d));
 	float behind = step(player_pos.y, base_y);   // player is above (= behind) the prop's foot
 	COLOR.a *= mix(1.0, faded_alpha, near * behind);
+	COLOR.rgb = mix(COLOR.rgb, dk_dark_color, dk_darkness * (1.0 - base_lit));
 }

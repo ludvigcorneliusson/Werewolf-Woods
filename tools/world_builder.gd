@@ -57,6 +57,14 @@ extends Node
 @export_range(0.0, 200.0, 0.5) var ferns := 18.0
 ## Grass tufts (everywhere, including the clearing).
 @export_range(0.0, 200.0, 0.5) var grass_tufts := 22.0
+## Small dark bushes you can hide in (forest).
+@export_range(0.0, 50.0, 0.1) var small_bushes := 3.0
+## Big dark bushes you can hide in (forest).
+@export_range(0.0, 50.0, 0.1) var big_bushes := 1.2
+## Long fallen trees with roots (forest).
+@export_range(0.0, 50.0, 0.1) var fallen_trees := 0.8
+## Broken stumps with a snapped-off log (forest).
+@export_range(0.0, 50.0, 0.1) var stump_logs := 1.0
 ## Groups of 2-4 mushrooms (red or brown) at the foot of a pine.
 @export_range(0.0, 50.0, 0.1) var mushroom_clusters := 4.0
 ## Pebbles (everywhere).
@@ -231,6 +239,22 @@ func _place_props(props: TileMapLayer, ground: TileMapLayer) -> int:
 		var p := _random_point(area)
 		if _rng.randf() < _forest(p):
 			_put("log", p, 30.0)
+	for i in int(fallen_trees * per):
+		var p := _random_point(area)
+		if _rng.randf() < _forest(p):
+			_put("fallen_tree", p, 56.0)
+	for i in int(stump_logs * per):
+		var p := _random_point(area)
+		if _rng.randf() < _forest(p):
+			_put("stump_log", p, 38.0)
+	for i in int(big_bushes * per):
+		var p := _random_point(area)
+		if _rng.randf() < _forest(p):
+			_put("bush_big", p, 30.0)
+	for i in int(small_bushes * per):
+		var p := _random_point(area)
+		if _rng.randf() < 0.3 + 0.7 * _forest(p):
+			_put("bush_small", p, 18.0)
 	for i in int(stumps * per):
 		var p := _random_point(area)
 		if _rng.randf() < _forest(p):

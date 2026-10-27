@@ -4,17 +4,17 @@
 [ext_resource type="Material" path="res://assets/props/varied_material.tres" id="2_qt1s5"]
 [ext_resource type="Texture2D" path="res://assets/props/mossy_rock.png" id="3_vr3d5"]
 
-[node name="MossyRock" type="Node2D" unique_id=1282214187]
+[node name="MossyRock" type="Node2D" unique_id=18936359]
 script = ExtResource("1_kd3ur")
 
-[node name="Sprite" type="Sprite2D" parent="." unique_id=93101769]
+[node name="Sprite" type="Sprite2D" parent="." unique_id=1687173285]
 light_mask = 2
 material = ExtResource("2_qt1s5")
 texture = ExtResource("3_vr3d5")
 centered = false
 offset = Vector2(-12, -18)
 
-[node name="Body" type="StaticBody2D" parent="." unique_id=1398576815]
+[node name="Body" type="StaticBody2D" parent="." unique_id=1224021269]
 
-[node name="@CollisionPolygon2D@9" type="CollisionPolygon2D" parent="Body" unique_id=1235119818]
+[node name="@CollisionPolygon2D@9" type="CollisionPolygon2D" parent="Body" unique_id=409338578]
 polygon = PackedVector2Array(10, 0, 8.6602545, 2, 5, 3.4641016, 6.123234e-16, 4, -5, 3.4641016, -8.6602545, 2, -10, 4.8985874e-16, -8.6602545, -2, -5, -3.4641016, -1.83697e-15, -4, 5, -3.4641016, 8.6602545, -2)

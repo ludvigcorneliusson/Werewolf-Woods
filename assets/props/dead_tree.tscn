@@ -10,7 +10,7 @@ radius = 7.0
 [sub_resource type="OccluderPolygon2D" id="OccluderPolygon2D_p8l4o"]
 polygon = PackedVector2Array(10, 0, 8.6602545, 3, 5, 5.196152, 6.123234e-16, 6, -5, 5.196152, -8.6602545, 3, -10, 7.3478806e-16, -8.6602545, -3, -5, -5.196152, -1.83697e-15, -6, 5, -5.196152, 8.6602545, -3)
 
-[node name="DeadTree" type="Node2D" unique_id=1593738445]
+[node name="DeadTree" type="Node2D" unique_id=1641942319]
 script = ExtResource("1_ejcxk")
 min_scale = 2.0
 max_scale = 2.6
@@ -19,17 +19,17 @@ saturation_variance = 0.15
 brightness_variance = 0.12
 sway = 0.35
 
-[node name="Sprite" type="Sprite2D" parent="." unique_id=609352984]
+[node name="Sprite" type="Sprite2D" parent="." unique_id=293309015]
 light_mask = 2
 material = ExtResource("2_v0ld0")
 texture = ExtResource("3_d1b6k")
 centered = false
 offset = Vector2(-34, -171)
 
-[node name="Body" type="StaticBody2D" parent="." unique_id=1055209797]
+[node name="Body" type="StaticBody2D" parent="." unique_id=1347828862]
 
-[node name="@CollisionShape2D@5" type="CollisionShape2D" parent="Body" unique_id=982811167]
+[node name="@CollisionShape2D@5" type="CollisionShape2D" parent="Body" unique_id=1453251946]
 shape = SubResource("CircleShape2D_cd3fi")
 
-[node name="VisionBlocker" type="LightOccluder2D" parent="." unique_id=694357794]
+[node name="VisionBlocker" type="LightOccluder2D" parent="." unique_id=3591012]
 occluder = SubResource("OccluderPolygon2D_p8l4o")

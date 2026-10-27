@@ -74,6 +74,11 @@ func _vary() -> void:
 	_rolled_at = position
 	scale = Vector2(s, s)
 	sprite.flip_h = random_flip and rng.randf() < 0.5
+	# Mirror collision and vision blocker along with the art (matters for lopsided props).
+	for part in ["Body", "VisionBlocker"]:
+		var n := get_node_or_null(part) as Node2D
+		if n:
+			n.scale.x = -1.0 if sprite.flip_h else 1.0
 	# Encoded for prop_fade.gdshader (color_variance): 0.5 = unchanged; alpha = sway.
 	sprite.self_modulate = Color(
 		0.5 + rng.randf_range(-hue_variance, hue_variance),

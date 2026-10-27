@@ -4,12 +4,12 @@
 [ext_resource type="Material" path="res://assets/props/varied_material.tres" id="2_h1hxf"]
 [ext_resource type="Texture2D" path="res://assets/props/fern_a.png" id="3_6jbd3"]
 
-[node name="FernA" type="Node2D" unique_id=66757427]
+[node name="FernA" type="Node2D" unique_id=362301903]
 script = ExtResource("1_mr86m")
 sway = 0.6
 bend = 1.0
 
-[node name="Sprite" type="Sprite2D" parent="." unique_id=1435536747]
+[node name="Sprite" type="Sprite2D" parent="." unique_id=91379182]
 material = ExtResource("2_h1hxf")
 texture = ExtResource("3_6jbd3")
 centered = false

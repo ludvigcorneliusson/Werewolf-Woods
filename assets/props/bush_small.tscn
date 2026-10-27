@@ -1,0 +1,24 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/varied_prop.gd" id="1_6ie77"]
+[ext_resource type="Material" path="res://assets/props/varied_material.tres" id="2_qov3o"]
+[ext_resource type="Texture2D" path="res://assets/props/bush_small.png" id="3_wjlox"]
+
+[sub_resource type="OccluderPolygon2D" id="OccluderPolygon2D_ovqnw"]
+cull_mode = 1
+polygon = PackedVector2Array(13, 0, 11.25833, 2.5, 6.5, 4.3301272, 7.9602044e-16, 5, -6.5, 4.3301272, -11.25833, 2.5, -13, 6.123234e-16, -11.25833, -2.5, -6.5, -4.3301272, -2.3880612e-15, -5, 6.5, -4.3301272, 11.25833, -2.5)
+
+[node name="BushSmall" type="Node2D" unique_id=65787419]
+script = ExtResource("1_6ie77")
+sway = 0.35
+bend = 0.6
+
+[node name="Sprite" type="Sprite2D" parent="." unique_id=1178497239]
+light_mask = 2
+material = ExtResource("2_qov3o")
+texture = ExtResource("3_wjlox")
+centered = false
+offset = Vector2(-24, -32)
+
+[node name="VisionBlocker" type="LightOccluder2D" parent="." unique_id=136918496]
+occluder = SubResource("OccluderPolygon2D_ovqnw")

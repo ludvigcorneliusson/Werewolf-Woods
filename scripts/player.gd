@@ -9,7 +9,7 @@ extends CharacterBody2D
 ## standing first frame of their H3 video).
 
 const WALK_SPEED := 120.0
-const SPRINT_SPEED := 170.0
+const SPRINT_SPEED := 200.0
 const DEPTH_SQUASH := 0.85       # up/down moves a bit slower on screen (3/4 view)
 
 const TEX_UP := preload("res://assets/characters/settler_up.png")
@@ -67,6 +67,7 @@ func _ready() -> void:
 	_idle_mat = ShaderMaterial.new()
 	_idle_mat.shader = preload("res://assets/characters/idle_breathe.gdshader")
 	sprite.material = _idle_mat
+	sprite.light_mask = 4          # characters: lit only by vision and fires
 	add_child(sprite)
 	_play("idle_down")
 
@@ -75,9 +76,11 @@ func _ready() -> void:
 	# but not shadowed so the forest stays readable.
 	# Size, falloff and brightness are set by main.gd from its Fog settings.
 	light = PointLight2D.new()
-	light.range_item_cull_mask = 1 | 2
+	# Light layers: 1 = ground/small plants, 2 = big props (never shadowed),
+	# 4 = characters (lit only by vision and fires).
+	light.range_item_cull_mask = 1 | 2 | 4
 	light.shadow_enabled = true
-	light.shadow_item_cull_mask = 1
+	light.shadow_item_cull_mask = 1 | 4
 	light.shadow_filter = PointLight2D.SHADOW_FILTER_PCF5
 	light.shadow_filter_smooth = 2.0
 	add_child(light)

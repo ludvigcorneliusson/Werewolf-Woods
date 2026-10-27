@@ -7,20 +7,20 @@
 [sub_resource type="OccluderPolygon2D" id="OccluderPolygon2D_t0jn3"]
 polygon = PackedVector2Array(15, 0, 12.990381, 3, 7.5, 5.196152, 9.18485e-16, 6, -7.5, 5.196152, -12.990381, 3, -15, 7.3478806e-16, -12.990381, -3, -7.5, -5.196152, -2.7554554e-15, -6, 7.5, -5.196152, 12.990381, -3)
 
-[node name="Boulder" type="Node2D" unique_id=1327878692]
+[node name="Boulder" type="Node2D" unique_id=207402195]
 script = ExtResource("1_b1df3")
 
-[node name="Sprite" type="Sprite2D" parent="." unique_id=162904581]
+[node name="Sprite" type="Sprite2D" parent="." unique_id=1146961300]
 light_mask = 2
 material = ExtResource("2_qycqk")
 texture = ExtResource("3_8d0nq")
 centered = false
 offset = Vector2(-19, -27)
 
-[node name="Body" type="StaticBody2D" parent="." unique_id=164174435]
+[node name="Body" type="StaticBody2D" parent="." unique_id=1814290716]
 
-[node name="@CollisionPolygon2D@8" type="CollisionPolygon2D" parent="Body" unique_id=803654215]
+[node name="@CollisionPolygon2D@8" type="CollisionPolygon2D" parent="Body" unique_id=1057107460]
 polygon = PackedVector2Array(17, 0, 14.722432, 3.5, 8.5, 6.0621777, 1.0409498e-15, 7, -8.5, 6.0621777, -14.722432, 3.5, -17, 8.5725277e-16, -14.722432, -3.5, -8.5, -6.0621777, -3.1228493e-15, -7, 8.5, -6.0621777, 14.722432, -3.5)
 
-[node name="VisionBlocker" type="LightOccluder2D" parent="." unique_id=1838626542]
+[node name="VisionBlocker" type="LightOccluder2D" parent="." unique_id=999940779]
 occluder = SubResource("OccluderPolygon2D_t0jn3")

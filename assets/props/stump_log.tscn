@@ -1,0 +1,30 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/varied_prop.gd" id="1_50t5s"]
+[ext_resource type="Material" path="res://assets/props/varied_material.tres" id="2_i6cg2"]
+[ext_resource type="Texture2D" path="res://assets/props/stump_log.png" id="3_yo5x7"]
+
+[sub_resource type="CapsuleShape2D" id="CapsuleShape2D_ttfhs"]
+radius = 5.0
+height = 50.0
+
+[node name="StumpLog" type="Node2D" unique_id=1064177070]
+script = ExtResource("1_50t5s")
+
+[node name="Sprite" type="Sprite2D" parent="." unique_id=2086201342]
+light_mask = 2
+material = ExtResource("2_i6cg2")
+texture = ExtResource("3_yo5x7")
+centered = false
+offset = Vector2(-39, -42)
+
+[node name="Body" type="StaticBody2D" parent="." unique_id=611518292]
+
+[node name="@CollisionPolygon2D@10" type="CollisionPolygon2D" parent="Body" unique_id=1605126538]
+position = Vector2(-27, -11)
+polygon = PackedVector2Array(9, 0, 7.7942286, 2, 4.5, 3.4641016, 5.5109107e-16, 4, -4.5, 3.4641016, -7.7942286, 2, -9, 4.8985874e-16, -7.7942286, -2, -4.5, -3.4641016, -1.6532732e-15, -4, 4.5, -3.4641016, 7.7942286, -2)
+
+[node name="@CollisionShape2D@11" type="CollisionShape2D" parent="Body" unique_id=929408718]
+position = Vector2(12, -9)
+rotation = 1.8849556
+shape = SubResource("CapsuleShape2D_ttfhs")
