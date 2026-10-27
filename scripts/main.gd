@@ -4,11 +4,12 @@ extends Node2D
 
 const MapGenerator := preload("res://scripts/map_generator.gd")
 const Player := preload("res://scripts/player.gd")
+const PlantPush := preload("res://scripts/plant_push.gd")
 ## Shared by every prop scene; we feed it the player position so trees fade
 ## when the player walks behind them.
 const PROP_MATERIAL := preload("res://assets/props/prop_material.tres")
-## Same fade, plus per-tree colour variation (see scripts/pine.gd).
-const PINE_MATERIAL := preload("res://assets/props/pine_material.tres")
+## Same fade, plus per-prop colour variation (see scripts/varied_prop.gd).
+const VARIED_MATERIAL := preload("res://assets/props/varied_material.tres")
 const VISION_TEX_SIZE := 512
 
 ## false = use the hand-painted World node in main.tscn (default).
@@ -69,6 +70,101 @@ const VISION_TEX_SIZE := 512
 	set(v):
 		shadow_softness = v
 		_apply_fog()
+
+# --- Wind ---------------------------------------------------------------------
+# Trees and plants bend like a hinge at their base on a plain sine wave. Each
+# prop scene has its own "Sway" (0 = rigid) on its root, e.g. assets/props/pine_tall.tscn.
+@export_group("Wind")
+## Turn all swaying on/off.
+@export var wind_enabled := true:
+	set(v):
+		wind_enabled = v
+		_apply_wind()
+## How far the top of a tree swings to each side (world px; the settler is 43 px tall).
+@export_range(0.0, 30.0, 0.1, "suffix:px") var wind_strength := 3.0:
+	set(v):
+		wind_strength = v
+		_apply_wind()
+## Swings per second.
+@export_range(0.0, 3.0, 0.01, "suffix:Hz") var wind_speed := 0.4:
+	set(v):
+		wind_speed = v
+		_apply_wind()
+## Constant lean in the wind direction (world px at the top). 0 = swings evenly both ways.
+@export_range(0.0, 30.0, 0.1, "suffix:px") var wind_lean := 1.0:
+	set(v):
+		wind_lean = v
+		_apply_wind()
+## Distance between trees that swing in sync. Smaller = neighbours more out of step;
+## very large = the whole forest moves together.
+@export_range(50.0, 20000.0, 10.0, "suffix:px") var wave_length := 500.0:
+	set(v):
+		wave_length = v
+		_apply_wind()
+## Direction the wind blows (screen space; x > 0 = to the right).
+@export var wind_direction := Vector2(1.0, 0.25):
+	set(v):
+		wind_direction = v
+		_apply_wind()
+
+# --- Idle ---------------------------------------------------------------------
+# The settler breathes and sways slightly while standing still.
+@export_group("Idle")
+## Breathing/sway while standing still.
+@export var idle_breathing := true:
+	set(v):
+		idle_breathing = v
+		_apply_idle()
+## How far the top of his head rises per breath (world px; he is 43 px tall).
+@export_range(0.0, 6.0, 0.1, "suffix:px") var breath_amount := 1.0:
+	set(v):
+		breath_amount = v
+		_apply_idle()
+## Breaths per second.
+@export_range(0.05, 2.0, 0.01, "suffix:Hz") var breath_speed := 0.35:
+	set(v):
+		breath_speed = v
+		_apply_idle()
+## Slight sideways drift of his upper body (world px at the top of his head). 0 = none.
+@export_range(0.0, 4.0, 0.1, "suffix:px") var idle_sway := 0.4:
+	set(v):
+		idle_sway = v
+		_apply_idle()
+## Sideways drift cycles per second.
+@export_range(0.02, 1.0, 0.01, "suffix:Hz") var idle_sway_speed := 0.18:
+	set(v):
+		idle_sway_speed = v
+		_apply_idle()
+
+# --- Plants -------------------------------------------------------------------
+# Ferns, grass and mushrooms bend away when you walk through them. Each plant
+# scene has its own "Bend" (0 = not pushed) on its root.
+@export_group("Plants")
+## Plants react to the settler walking through them.
+@export var plants_react := true:
+	set(v):
+		plants_react = v
+		_apply_plants()
+## How far plants lean at walking speed (radians, x the plant's Bend). Sprinting pushes harder.
+@export_range(0.0, 1.5, 0.01) var push_strength := 0.45:
+	set(v):
+		push_strength = v
+		_apply_plants()
+## How close (from the feet) a plant has to be to get pushed.
+@export_range(4.0, 80.0, 1.0, "suffix:px") var push_radius := 20.0:
+	set(v):
+		push_radius = v
+		_apply_plants()
+## How hard plants spring back upright. Higher = snappier.
+@export_range(10.0, 600.0, 1.0) var spring_back := 140.0:
+	set(v):
+		spring_back = v
+		_apply_plants()
+## Higher = less wobble after you pass.
+@export_range(0.0, 40.0, 0.5) var wobble_damping := 7.0:
+	set(v):
+		wobble_damping = v
+		_apply_plants()
 @export_group("")
 
 var map: Node2D
@@ -79,6 +175,7 @@ var seed_value := 0
 
 var _hud_label: Label
 var _vision_tex: GradientTexture2D
+var _plant_push: Node
 
 
 func _ready() -> void:
@@ -100,6 +197,14 @@ func _ready() -> void:
 		_new_map(MapGenerator.DEFAULT_SEED)
 	else:
 		_setup_painted_world()
+	_apply_wind()
+	_apply_idle()
+	_plant_push = PlantPush.new()
+	_plant_push.player = player
+	_plant_push.props = world.get_node_or_null("Props") if is_instance_valid(world) else null
+	_plant_push.walk_speed = Player.WALK_SPEED
+	add_child(_plant_push)
+	_apply_plants()
 
 
 func _process(_delta: float) -> void:
@@ -107,7 +212,37 @@ func _process(_delta: float) -> void:
 		map.set_player_position(player.global_position)
 	else:
 		PROP_MATERIAL.set_shader_parameter("player_pos", player.global_position)
-		PINE_MATERIAL.set_shader_parameter("player_pos", player.global_position)
+		VARIED_MATERIAL.set_shader_parameter("player_pos", player.global_position)
+
+
+## Pushes the Wind settings to the shared prop shader.
+func _apply_wind() -> void:
+	var m := VARIED_MATERIAL
+	m.set_shader_parameter("wind_strength", wind_strength if wind_enabled else 0.0)
+	m.set_shader_parameter("wind_lean", wind_lean if wind_enabled else 0.0)
+	m.set_shader_parameter("wind_speed", wind_speed)
+	m.set_shader_parameter("wave_spread", 1.0 / maxf(wave_length, 1.0))
+	m.set_shader_parameter("wind_dir", wind_direction if wind_direction != Vector2.ZERO else Vector2.RIGHT)
+
+
+func _apply_idle() -> void:
+	if player == null:
+		return
+	player.idle_enabled = idle_breathing
+	player.breath_amount = breath_amount
+	player.breath_speed = breath_speed
+	player.idle_sway = idle_sway
+	player.idle_sway_speed = idle_sway_speed
+
+
+func _apply_plants() -> void:
+	if _plant_push == null:
+		return
+	_plant_push.set_physics_process(plants_react)
+	_plant_push.push_strength = push_strength
+	_plant_push.push_radius = push_radius
+	_plant_push.spring = spring_back
+	_plant_push.damping = wobble_damping
 
 
 ## Pushes the Fog settings to the darkness and the player's vision light.

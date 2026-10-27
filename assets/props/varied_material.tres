@@ -1,0 +1,15 @@
+[gd_resource type="ShaderMaterial" format=3]
+
+[ext_resource type="Shader" path="res://assets/props/prop_fade.gdshader" id="1_rwvuw"]
+
+[resource]
+shader = ExtResource("1_rwvuw")
+shader_parameter/player_pos = null
+shader_parameter/fade_radius = 38.0
+shader_parameter/faded_alpha = null
+shader_parameter/color_variance = true
+shader_parameter/wind_strength = null
+shader_parameter/wind_speed = null
+shader_parameter/wind_lean = null
+shader_parameter/wave_spread = null
+shader_parameter/wind_dir = null

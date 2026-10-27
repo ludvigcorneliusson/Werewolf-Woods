@@ -9,7 +9,7 @@ extends CharacterBody2D
 ## standing first frame of their H3 video).
 
 const WALK_SPEED := 120.0
-const SPRINT_SPEED := 200.0
+const SPRINT_SPEED := 170.0
 const DEPTH_SQUASH := 0.85       # up/down moves a bit slower on screen (3/4 view)
 
 const TEX_UP := preload("res://assets/characters/settler_up.png")
@@ -21,11 +21,11 @@ const TEX_DOWN_RIGHT := preload("res://assets/characters/settler_down_right.png"
 ## Run strips: frame count, frame size and the offset that puts the feet on the
 ## node origin (lined up with the idle sprite so start/stop doesn't jump).
 const RUN := {
-	"right": {"tex": preload("res://assets/characters/settler_run_right.png"), "frames": 29, "size": Vector2i(31, 47), "offset": Vector2(-15, -45), "cycle": 0.8},
+	"right": {"tex": preload("res://assets/characters/settler_run_right.png"), "frames": 29, "size": Vector2i(31, 47), "offset": Vector2(-15, -45), "cycle": 1.1},
 	"up": {"tex": preload("res://assets/characters/settler_run_up.png"), "frames": 16, "size": Vector2i(27, 48), "offset": Vector2(-13, -44), "cycle": 0.5},
 	"down": {"tex": preload("res://assets/characters/settler_run_down.png"), "frames": 12, "size": Vector2i(31, 45), "offset": Vector2(-16, -42), "cycle": 0.5},
-	"up_right": {"tex": preload("res://assets/characters/settler_run_up_right.png"), "frames": 16, "size": Vector2i(28, 48), "offset": Vector2(-12, -44), "cycle": 0.65},
-	"down_right": {"tex": preload("res://assets/characters/settler_run_down_right.png"), "frames": 18, "size": Vector2i(31, 47), "offset": Vector2(-16, -43), "cycle": 0.65},
+	"up_right": {"tex": preload("res://assets/characters/settler_run_up_right.png"), "frames": 16, "size": Vector2i(28, 48), "offset": Vector2(-12, -44), "cycle": 0.5},
+	"down_right": {"tex": preload("res://assets/characters/settler_run_down_right.png"), "frames": 30, "size": Vector2i(32, 46), "offset": Vector2(-18, -41), "cycle": 0.9},
 }
 ## "cycle" = seconds per full run cycle (two steps) at WALK_SPEED, per direction.
 ## Higher = slower legs. Sprint plays faster automatically. Each direction has
@@ -36,6 +36,16 @@ var facing := Vector2.DOWN
 var light: PointLight2D
 var camera: Camera2D
 var sprite: AnimatedSprite2D
+
+# Idle breathing (assets/characters/idle_breathe.gdshader). main.gd sets these
+# from its Idle settings.
+var idle_enabled := true
+var breath_amount := 1.0
+var breath_speed := 0.35
+var idle_sway := 0.4
+var idle_sway_speed := 0.18
+var _idle_mat: ShaderMaterial
+var _idle := 0.0
 
 var _moving := false
 var _speed := 0.0
@@ -54,6 +64,9 @@ func _ready() -> void:
 	sprite = AnimatedSprite2D.new()
 	sprite.centered = false
 	sprite.sprite_frames = _build_frames()
+	_idle_mat = ShaderMaterial.new()
+	_idle_mat.shader = preload("res://assets/characters/idle_breathe.gdshader")
+	sprite.material = _idle_mat
 	add_child(sprite)
 	_play("idle_down")
 
@@ -77,7 +90,7 @@ func _ready() -> void:
 	camera.make_current()
 
 
-func _physics_process(_delta: float) -> void:
+func _physics_process(delta: float) -> void:
 	var dir := Input.get_vector("move_left", "move_right", "move_up", "move_down")
 	_moving = dir != Vector2.ZERO
 
@@ -91,7 +104,19 @@ func _physics_process(_delta: float) -> void:
 	if _moving:
 		facing = dir
 	_update_sprite()
+	_update_idle(delta)
 	queue_redraw()
+
+
+## Fades the breathing in after he stops and out as soon as he moves.
+func _update_idle(delta: float) -> void:
+	var target := 1.0 if idle_enabled and not _moving else 0.0
+	_idle = move_toward(_idle, target, delta * (1.5 if target > _idle else 8.0))
+	_idle_mat.set_shader_parameter("active", _idle)
+	_idle_mat.set_shader_parameter("breath_amount", breath_amount)
+	_idle_mat.set_shader_parameter("breath_speed", breath_speed)
+	_idle_mat.set_shader_parameter("sway_amount", idle_sway)
+	_idle_mat.set_shader_parameter("sway_speed", idle_sway_speed)
 
 
 func _update_sprite() -> void:
@@ -160,4 +185,3 @@ func _draw() -> void:
 	draw_set_transform(Vector2(0, 0), 0.0, Vector2(1.0, 0.4))
 	draw_circle(Vector2.ZERO, 9.0, Color(0, 0, 0, 0.3))
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-

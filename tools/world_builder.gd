@@ -31,6 +31,41 @@ extends Node
 ## Size of thick/thin forest patches. Lower = bigger groves and bigger gaps.
 @export_range(0.0002, 0.02, 0.0001) var patch_frequency := 0.02
 
+@export_group("Tree Mix")
+# Relative weights of the living pine types (they don't need to add up to 1).
+## Big detailed pine (pine_tall.png).
+@export_range(0.0, 10.0, 0.05) var tall_pines := 0.5
+## Small dark blue-green pine (pine_dark.png).
+@export_range(0.0, 10.0, 0.05) var dark_pines := 0.2
+## Share of tree spots that get a dead tree instead (0.08 = about 1 in 12).
+@export_range(0.0, 1.0, 0.01) var dead_tree_share := 0.08
+## Minimum visible gap between two tree trunks (world px). Trunks never touch.
+@export_range(0.0, 100.0, 1.0, "suffix:px") var trunk_gap := 8.0
+
+@export_group("Props")
+# Amounts per 1000 x 1000 px (about two screens). Props marked "forest" are this
+# dense in the thickest forest and thin out with the trees.
+## Tree stumps (forest).
+@export_range(0.0, 50.0, 0.1) var stumps := 3.0
+## Mossy fallen logs (forest).
+@export_range(0.0, 50.0, 0.1) var logs := 2.0
+## Big mossy boulders that block sight (forest). Some get small rocks around them.
+@export_range(0.0, 50.0, 0.1) var boulders := 1.5
+## Small mossy rocks (forest and around the clearing edge).
+@export_range(0.0, 50.0, 0.1) var mossy_rocks := 3.0
+## Ferns, both kinds (mostly forest, a few in the open).
+@export_range(0.0, 200.0, 0.5) var ferns := 18.0
+## Grass tufts (everywhere, including the clearing).
+@export_range(0.0, 200.0, 0.5) var grass_tufts := 22.0
+## Groups of 2-4 mushrooms (red or brown) at the foot of a pine.
+@export_range(0.0, 50.0, 0.1) var mushroom_clusters := 4.0
+## Pebbles (everywhere).
+@export_range(0.0, 100.0, 0.5) var pebbles := 8.0
+## Sticks (everywhere).
+@export_range(0.0, 100.0, 0.5) var sticks := 8.0
+## Keep this much open ground around the campfire (px).
+@export_range(0.0, 400.0, 1.0, "suffix:px") var campfire_space := 60.0
+
 @export_group("Spawn")
 ## Where the settler starts, relative to the campfire at the map centre.
 @export var spawn_offset := Vector2(0, 70)
@@ -38,6 +73,14 @@ extends Node
 const GROUND_TILESET := "res://assets/tiles/ground_tileset.tres"
 const PROPS_TILESET := "res://assets/props/props_tileset.tres"
 const CAMPFIRE := "res://assets/props/campfire.tscn"
+## Per tree type, in ART pixels: [root half-width, visible trunk height below the
+## canopy]. Used so trunks never visibly touch. Dead trees show their whole trunk.
+const TREE_SHAPE := {
+	"pine_tall": [14.0, 32.0],
+	"pine_dark": [7.0, 14.0],
+	"dead_pine": [13.0, 228.0],
+	"dead_tree": [13.0, 175.0],
+}
 
 
 func _ready() -> void:
@@ -47,14 +90,14 @@ func _ready() -> void:
 
 func _on_rebuild_pressed() -> void:
 	var main := owner if owner else get_parent()
-	var trees := rebuild(main)
+	var placed := rebuild(main)
 	var ei := Engine.get_singleton("EditorInterface")
 	if ei:
 		ei.call("mark_scene_as_unsaved")
-	print("World rebuilt: %d x %d tiles, %d pines. Save the scene to keep it." % [ground_tiles, ground_tiles, trees])
+	print("World rebuilt: %d x %d tiles, %d props. Save the scene to keep it." % [ground_tiles, ground_tiles, placed])
 
 
-## Replaces main's World node. Returns the number of trees placed.
+## Replaces main's World node. Returns the number of props placed.
 ## Also used by tools/build_world.gd from the command line.
 func rebuild(main: Node) -> int:
 	var old := main.get_node_or_null("World")
@@ -87,7 +130,7 @@ func rebuild(main: Node) -> int:
 	props.tile_set = pts
 	props.y_sort_enabled = true
 	_add(main, world, props)
-	var trees := _place_forest(props, ground)
+	var placed := _place_props(props, ground)
 
 	# Campfire in the middle of the clearing (instanced, so tweaks in campfire.tscn stay).
 	var campfire: Node2D = (load(CAMPFIRE) as PackedScene).instantiate()
@@ -98,47 +141,189 @@ func rebuild(main: Node) -> int:
 	spawn.name = "Spawn"
 	spawn.position = spawn_offset
 	_add(main, world, spawn)
-	return trees
+	return placed
 
 
-func _place_forest(props: TileMapLayer, ground: TileMapLayer) -> int:
-	# Pines only. Density follows noise so there are thick stands and thinner
-	# patches, and ramps up from the clearing edge.
-	var source := props.tile_set.get_source_id(0)
-	var coll := props.tile_set.get_source(source) as TileSetScenesCollectionSource
-	var pine := -1
+var _rng := RandomNumberGenerator.new()
+var _noise := FastNoiseLite.new()
+var _props: TileMapLayer
+var _source := 0
+var _ids := {}            # prop name -> scene tile id
+var _taken := {}          # cells already holding a prop
+var _solid := {}          # 64 px buckets -> [[pos, radius], ...] of trunks/rocks/logs
+var _counts := {}
+var _trees := {}          # 128 px column buckets -> [[pos, half_width, trunk_height], ...] in world px
+var _tree_scale := {}     # tree name -> largest scale it can get (from its scene)
+
+
+func _place_props(props: TileMapLayer, ground: TileMapLayer) -> int:
+	_props = props
+	_source = props.tile_set.get_source_id(0)
+	var coll := props.tile_set.get_source(_source) as TileSetScenesCollectionSource
+	_ids.clear()
 	for i in coll.get_scene_tiles_count():
 		var id := coll.get_scene_tile_id(i)
-		if coll.get_scene_tile_scene(id).resource_path.ends_with("pine.tscn"):
-			pine = id
-	if pine == -1:
-		push_error("WorldBuilder: no pine.tscn in props_tileset.tres")
+		_ids[coll.get_scene_tile_scene(id).resource_path.get_file().get_basename()] = id
+	if not _ids.has("pine_tall") and not _ids.has("pine_dark"):
+		push_error("WorldBuilder: no pine scenes in props_tileset.tres")
 		return 0
+	var live := {"pine_tall": tall_pines, "pine_dark": dark_pines}
+	var live_total := 0.0
+	for k in live:
+		live_total += live[k] if _ids.has(k) else 0.0
+	_rng.seed = map_seed
+	_noise.seed = map_seed
+	_noise.frequency = patch_frequency
+	_taken.clear()
+	_solid.clear()
+	_counts.clear()
+	_trees.clear()
+	_tree_scale.clear()
+	for name in TREE_SHAPE:
+		if _ids.has(name):
+			var inst = coll.get_scene_tile_scene(_ids[name]).instantiate()
+			_tree_scale[name] = maxf(float(inst.get("max_scale")), float(inst.get("min_scale")))
+			inst.free()
 
-	var rng := RandomNumberGenerator.new()
-	rng.seed = map_seed
-	var noise := FastNoiseLite.new()
-	noise.seed = map_seed
-	noise.frequency = patch_frequency
 	var rect := ground.get_used_rect()
-	var size := Vector2(rect.size) * Vector2(ground.tile_set.tile_size)
-	var top_left := Vector2(rect.position) * Vector2(ground.tile_set.tile_size)
-	var taken := {}
-	var y := top_left.y + 40.0
-	while y < top_left.y + size.y - 20.0:
-		var x := top_left.x + 30.0
-		while x < top_left.x + size.x - 30.0:
-			var p := Vector2(x + rng.randf_range(-tree_jitter, tree_jitter), y + rng.randf_range(-tree_jitter, tree_jitter))
-			var density := clampf(0.6 + noise.get_noise_2dv(p) * 0.9, 0.15, 1.0) \
-					* smoothstep(clearing, clearing + clearing_fade, p.length())
-			if rng.randf() < density * forest_fill:
-				var cell := props.local_to_map(p)
-				if not taken.has(cell):
-					taken[cell] = true
-					props.set_cell(cell, source, Vector2i.ZERO, pine)
+	var tile := Vector2(ground.tile_set.tile_size)
+	var area := Rect2(Vector2(rect.position) * tile, Vector2(rect.size) * tile).grow(-30.0)
+
+	# --- Trees on a jittered grid; density follows noise, ramps up from the clearing.
+	# Spots are picked first, then dead trees are placed before living ones:
+	# a dead tree shows its whole trunk, so it needs the most room to never touch.
+	var spots := []
+	var y := area.position.y + 10.0
+	while y < area.end.y:
+		var x := area.position.x
+		while x < area.end.x:
+			var p := Vector2(x + _rng.randf_range(-tree_jitter, tree_jitter), y + _rng.randf_range(-tree_jitter, tree_jitter))
+			if _rng.randf() < _forest(p) * forest_fill:
+				var kind := "pine_tall" if _ids.has("pine_tall") else "pine_dark"
+				if _rng.randf() < dead_tree_share:
+					kind = "dead_pine" if _rng.randf() < 0.5 else "dead_tree"
+				elif live_total > 0.0:
+					var roll := _rng.randf() * live_total
+					for k in live:
+						if not _ids.has(k):
+							continue
+						roll -= live[k]
+						kind = k
+						if roll <= 0.0:
+							break
+				spots.append([kind, p])
 			x += tree_spacing
 		y += tree_spacing * 0.8      # rows a bit closer: the 3/4 view squashes depth
-	return taken.size()
+	var trunks: Array[Vector2] = []
+	for dead_pass in [true, false]:
+		for s in spots:
+			if String(s[0]).begins_with("dead") == dead_pass and _put_tree(s[0], s[1]) and not dead_pass:
+				trunks.append(s[1])
+
+	# --- Solid forest props (kept clear of trunks and each other).
+	var per := area.get_area() / 1_000_000.0
+	for i in int(boulders * per):
+		var p := _random_point(area)
+		if _rng.randf() < _forest(p) and _put("boulder", p, 20.0):
+			for k in _rng.randi_range(0, 2):       # a few small rocks around some boulders
+				_put("mossy_rock", p + Vector2.from_angle(_rng.randf() * TAU) * Vector2(_rng.randf_range(26, 38), _rng.randf_range(14, 22)), 11.0)
+	for i in int(logs * per):
+		var p := _random_point(area)
+		if _rng.randf() < _forest(p):
+			_put("log", p, 30.0)
+	for i in int(stumps * per):
+		var p := _random_point(area)
+		if _rng.randf() < _forest(p):
+			_put("stump", p, 14.0)
+	for i in int(mossy_rocks * per):
+		var p := _random_point(area)
+		var edge := 1.0 - clampf(absf(p.length() - clearing) / 160.0, 0.0, 1.0)   # also ring the clearing
+		if _rng.randf() < maxf(_forest(p), edge):
+			_put("mossy_rock", p, 11.0)
+
+	# --- Mushrooms in small groups at the foot of a pine.
+	for i in int(mushroom_clusters * per):
+		if trunks.is_empty():
+			break
+		var t: Vector2 = trunks[_rng.randi() % trunks.size()]
+		var c := t + Vector2.from_angle(_rng.randf() * TAU) * Vector2(_rng.randf_range(22, 34), _rng.randf_range(12, 20))
+		var kind := "mushroom" if _rng.randf() < 0.5 else "mushroom_brown"   # one kind per group
+		for k in _rng.randi_range(2, 4):
+			_put(kind, c + Vector2(_rng.randf_range(-9, 9), _rng.randf_range(-5, 5)), 0.0)
+
+	# --- Ground cover (walk through).
+	for i in int(ferns * per):
+		var p := _random_point(area)
+		if _rng.randf() < 0.2 + 0.8 * _forest(p):
+			_put("fern_a" if _rng.randf() < 0.5 else "fern_b", p, 0.0)
+	for i in int(grass_tufts * per):
+		_put("grass_tuft", _random_point(area), 0.0)
+	for i in int(pebbles * per):
+		_put("pebble", _random_point(area), 0.0)
+	for i in int(sticks * per):
+		_put("stick", _random_point(area), 0.0)
+
+	print("WorldBuilder placed: ", _counts)
+	return _taken.size()
+
+
+## Forest thickness 0..1 at p: noise patches, zero in the clearing.
+func _forest(p: Vector2) -> float:
+	return clampf(0.6 + _noise.get_noise_2dv(p) * 0.9, 0.15, 1.0) \
+			* smoothstep(clearing, clearing + clearing_fade, p.length())
+
+
+func _random_point(area: Rect2) -> Vector2:
+	return Vector2(_rng.randf_range(area.position.x, area.end.x), _rng.randf_range(area.position.y, area.end.y))
+
+
+## Places a tree only if its trunk can't visibly touch another tree's trunk:
+## two trees overlap when they are closer sideways than their root widths (+ gap)
+## AND the back one's base lies within the front one's visible trunk height.
+## Uses each tree's largest possible size, so it holds whatever size they roll.
+func _put_tree(kind: String, p: Vector2) -> bool:
+	if not _ids.has(kind) or not TREE_SHAPE.has(kind):
+		return false
+	p = _props.map_to_local(_props.local_to_map(p))     # where it will actually stand
+	var sc: float = _tree_scale.get(kind, 2.6)
+	var hw: float = TREE_SHAPE[kind][0] * sc
+	var th: float = TREE_SHAPE[kind][1] * sc
+	var col := int(floor(p.x / 128.0))
+	for c in range(col - 1, col + 2):
+		for o in _trees.get(c, []):
+			var q: Vector2 = o[0]
+			if absf(p.x - q.x) >= hw + o[1] + trunk_gap:
+				continue
+			var front_h: float = th if p.y >= q.y else o[2]
+			if absf(p.y - q.y) < front_h + trunk_gap:
+				return false
+	# Also keeps rocks/logs/stumps off the root flare (they check _solid).
+	if not _put(kind, p, hw):
+		return false
+	_trees.get_or_add(col, []).append([p, hw, th])
+	return true
+
+
+## Places a prop if its cell is free, it's outside the campfire space and (for
+## solid props, radius > 0) it doesn't overlap a trunk/rock/log.
+func _put(prop: String, p: Vector2, radius: float) -> bool:
+	if not _ids.has(prop) or p.length() < campfire_space + radius:
+		return false
+	var cell := _props.local_to_map(p)
+	if _taken.has(cell):
+		return false
+	if radius > 0.0:
+		var b := Vector2i((p / 64.0).floor())
+		for dy in range(-1, 2):
+			for dx in range(-1, 2):
+				for o in _solid.get(b + Vector2i(dx, dy), []):
+					if p.distance_to(o[0]) < radius + o[1] + 4.0:
+						return false
+		_solid.get_or_add(b, []).append([p, radius])
+	_taken[cell] = true
+	_props.set_cell(cell, _source, Vector2i.ZERO, _ids[prop])
+	_counts[prop] = _counts.get(prop, 0) + 1
+	return true
 
 
 func _add(owner_node: Node, parent: Node, child: Node) -> void:

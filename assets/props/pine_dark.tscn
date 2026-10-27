@@ -1,0 +1,35 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/varied_prop.gd" id="1_u83kj"]
+[ext_resource type="Material" path="res://assets/props/varied_material.tres" id="2_j5jmi"]
+[ext_resource type="Texture2D" path="res://assets/props/pine_dark.png" id="3_wa4a5"]
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_v56ab"]
+radius = 4.5
+
+[sub_resource type="OccluderPolygon2D" id="OccluderPolygon2D_pj3lf"]
+polygon = PackedVector2Array(7, 0, 6.0621777, 2, 3.5, 3.4641016, 4.2862639e-16, 4, -3.5, 3.4641016, -6.0621777, 2, -7, 4.8985874e-16, -6.0621777, -2, -3.5, -3.4641016, -1.2858791e-15, -4, 3.5, -3.4641016, 6.0621777, -2)
+
+[node name="PineDark" type="Node2D" unique_id=1640775037]
+script = ExtResource("1_u83kj")
+min_scale = 2.0
+max_scale = 2.6
+hue_variance = 0.03
+saturation_variance = 0.2
+brightness_variance = 0.15
+sway = 1.0
+
+[node name="Sprite" type="Sprite2D" parent="." unique_id=724147871]
+light_mask = 2
+material = ExtResource("2_j5jmi")
+texture = ExtResource("3_wa4a5")
+centered = false
+offset = Vector2(-27, -101)
+
+[node name="Body" type="StaticBody2D" parent="." unique_id=348705653]
+
+[node name="@CollisionShape2D@3" type="CollisionShape2D" parent="Body" unique_id=1083651192]
+shape = SubResource("CircleShape2D_v56ab")
+
+[node name="VisionBlocker" type="LightOccluder2D" parent="." unique_id=1003078706]
+occluder = SubResource("OccluderPolygon2D_pj3lf")

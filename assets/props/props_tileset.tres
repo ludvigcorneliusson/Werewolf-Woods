@@ -1,19 +1,38 @@
-[gd_resource type="TileSet" load_steps=8 format=3]
+[gd_resource type="TileSet" format=3]
 
-[ext_resource type="PackedScene" path="res://assets/props/tree_light.tscn" id="1_xtcx4"]
-[ext_resource type="PackedScene" path="res://assets/props/tree_dark.tscn" id="2_kuqjd"]
-[ext_resource type="PackedScene" path="res://assets/props/pine.tscn" id="3_7va6v"]
-[ext_resource type="PackedScene" path="res://assets/props/bush.tscn" id="4_w4w4v"]
-[ext_resource type="PackedScene" path="res://assets/props/stump.tscn" id="5_478o6"]
-[ext_resource type="PackedScene" path="res://assets/props/rock.tscn" id="6_an5cl"]
+[ext_resource type="PackedScene" path="res://assets/props/pine_tall.tscn" id="1_wqshy"]
+[ext_resource type="PackedScene" path="res://assets/props/fern_b.tscn" id="2_6engy"]
+[ext_resource type="PackedScene" path="res://assets/props/grass_tuft.tscn" id="3_vaj83"]
+[ext_resource type="PackedScene" path="res://assets/props/mushroom.tscn" id="4_bkd8d"]
+[ext_resource type="PackedScene" path="res://assets/props/mushroom_brown.tscn" id="5_bcyjq"]
+[ext_resource type="PackedScene" path="res://assets/props/pebble.tscn" id="6_y8t7d"]
+[ext_resource type="PackedScene" path="res://assets/props/stick.tscn" id="7_25esq"]
+[ext_resource type="PackedScene" path="res://assets/props/pine_dark.tscn" id="8_48ves"]
+[ext_resource type="PackedScene" path="res://assets/props/dead_pine.tscn" id="9_sc7sb"]
+[ext_resource type="PackedScene" path="res://assets/props/dead_tree.tscn" id="10_utasy"]
+[ext_resource type="PackedScene" path="res://assets/props/stump.tscn" id="11_o5buj"]
+[ext_resource type="PackedScene" path="res://assets/props/log.tscn" id="12_rqd4p"]
+[ext_resource type="PackedScene" path="res://assets/props/boulder.tscn" id="13_ftwy5"]
+[ext_resource type="PackedScene" path="res://assets/props/mossy_rock.tscn" id="14_ltgn0"]
+[ext_resource type="PackedScene" path="res://assets/props/fern_a.tscn" id="15_k2p3l"]
 
-[sub_resource type="TileSetScenesCollectionSource" id="TileSetScenesCollectionSource_ufmdt"]
-scenes/1/scene = ExtResource("1_xtcx4")
-scenes/2/scene = ExtResource("2_kuqjd")
-scenes/3/scene = ExtResource("3_7va6v")
-scenes/4/scene = ExtResource("4_w4w4v")
-scenes/5/scene = ExtResource("5_478o6")
-scenes/6/scene = ExtResource("6_an5cl")
+[sub_resource type="TileSetScenesCollectionSource" id="TileSetScenesCollectionSource_3s4to"]
+scenes/1/scene = ExtResource("1_wqshy")
+scenes/2/scene = ExtResource("8_48ves")
+scenes/3/scene = ExtResource("9_sc7sb")
+scenes/4/scene = ExtResource("10_utasy")
+scenes/5/scene = ExtResource("11_o5buj")
+scenes/6/scene = ExtResource("12_rqd4p")
+scenes/7/scene = ExtResource("13_ftwy5")
+scenes/8/scene = ExtResource("14_ltgn0")
+scenes/9/scene = ExtResource("15_k2p3l")
+scenes/10/scene = ExtResource("2_6engy")
+scenes/11/scene = ExtResource("3_vaj83")
+scenes/12/scene = ExtResource("4_bkd8d")
+scenes/13/scene = ExtResource("5_bcyjq")
+scenes/14/scene = ExtResource("6_y8t7d")
+scenes/15/scene = ExtResource("7_25esq")
 
 [resource]
-sources/0 = SubResource("TileSetScenesCollectionSource_ufmdt")
+tile_size = Vector2i(8, 8)
+sources/0 = SubResource("TileSetScenesCollectionSource_3s4to")
