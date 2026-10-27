@@ -1,0 +1,9 @@
+[gd_resource type="ShaderMaterial" load_steps=2 format=3]
+
+[ext_resource type="Shader" path="res://assets/props/prop_fade.gdshader" id="1_ifv1f"]
+
+[resource]
+shader = ExtResource("1_ifv1f")
+shader_parameter/player_pos = null
+shader_parameter/fade_radius = null
+shader_parameter/faded_alpha = null

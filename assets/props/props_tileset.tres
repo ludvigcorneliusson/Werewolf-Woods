@@ -1,0 +1,19 @@
+[gd_resource type="TileSet" format=3 uid="uid://dcqrlqmottstl"]
+
+[ext_resource type="PackedScene" path="res://assets/props/tree_light.tscn" id="1_xtcx4"]
+[ext_resource type="PackedScene" path="res://assets/props/tree_dark.tscn" id="2_kuqjd"]
+[ext_resource type="PackedScene" path="res://assets/props/pine.tscn" id="3_7va6v"]
+[ext_resource type="PackedScene" path="res://assets/props/bush.tscn" id="4_w4w4v"]
+[ext_resource type="PackedScene" path="res://assets/props/stump.tscn" id="5_478o6"]
+[ext_resource type="PackedScene" path="res://assets/props/rock.tscn" id="6_an5cl"]
+
+[sub_resource type="TileSetScenesCollectionSource" id="TileSetScenesCollectionSource_ufmdt"]
+scenes/1/scene = ExtResource("1_xtcx4")
+scenes/2/scene = ExtResource("2_kuqjd")
+scenes/3/scene = ExtResource("3_7va6v")
+scenes/4/scene = ExtResource("4_w4w4v")
+scenes/5/scene = ExtResource("5_478o6")
+scenes/6/scene = ExtResource("6_an5cl")
+
+[resource]
+sources/0 = SubResource("TileSetScenesCollectionSource_ufmdt")

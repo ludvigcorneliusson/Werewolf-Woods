@@ -1,0 +1,29 @@
+# Godot 4 cache and imported files (regenerated automatically)
+.godot/
+.import/
+
+# Exported builds
+export/
+build/
+*.pck
+*.zip
+
+# Godot-specific temp files
+*.tmp
+*.translation
+export_presets.cfg.bak
+
+# Source videos and big work files (keep these outside the repo)
+*.mp4
+*.mov
+*.webm
+*.psd
+
+# OS junk
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Python cache from the tools scripts
+__pycache__/
+*.pyc

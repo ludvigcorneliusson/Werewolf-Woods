@@ -1,0 +1,21 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Material" path="res://assets/props/prop_material.tres" id="1_0vnl1"]
+[ext_resource type="Texture2D" path="res://assets/props/stump.png" id="2_e5et7"]
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_dc6d4"]
+radius = 9.0
+
+[node name="Stump" type="Node2D"]
+
+[node name="Sprite" type="Sprite2D" parent="."]
+light_mask = 2
+material = ExtResource("1_0vnl1")
+texture = ExtResource("2_e5et7")
+centered = false
+offset = Vector2(-19, -25)
+
+[node name="Body" type="StaticBody2D" parent="."]
+
+[node name="@CollisionShape2D@6" type="CollisionShape2D" parent="Body"]
+shape = SubResource("CircleShape2D_dc6d4")

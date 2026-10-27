@@ -1,0 +1,27 @@
+[gd_scene load_steps=5 format=3]
+
+[ext_resource type="Material" path="res://assets/props/prop_material.tres" id="1_b5ang"]
+[ext_resource type="Texture2D" path="res://assets/props/bush.png" id="2_6ukk1"]
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_af8hh"]
+radius = 14.0
+
+[sub_resource type="OccluderPolygon2D" id="OccluderPolygon2D_0xlmd"]
+polygon = PackedVector2Array(18, 0, 15.588457, 4.5, 9, 7.7942286, 1.1021821e-15, 9, -9, 7.7942286, -15.588457, 4.5, -18, 1.1021821e-15, -15.588457, -4.5, -9, -7.7942286, -3.3065464e-15, -9, 9, -7.7942286, 15.588457, -4.5)
+
+[node name="Bush" type="Node2D"]
+
+[node name="Sprite" type="Sprite2D" parent="."]
+light_mask = 2
+material = ExtResource("1_b5ang")
+texture = ExtResource("2_6ukk1")
+centered = false
+offset = Vector2(-29, -43)
+
+[node name="Body" type="StaticBody2D" parent="."]
+
+[node name="@CollisionShape2D@5" type="CollisionShape2D" parent="Body"]
+shape = SubResource("CircleShape2D_af8hh")
+
+[node name="VisionBlocker" type="LightOccluder2D" parent="."]
+occluder = SubResource("OccluderPolygon2D_0xlmd")
