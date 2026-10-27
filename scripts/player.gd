@@ -21,7 +21,7 @@ const TEX_RIGHT := preload("res://assets/characters/settler_right.png")
 ## Run strips: frame count, frame size and the offset that puts the feet on the
 ## node origin (lined up with the idle sprite so start/stop doesn't jump).
 const RUN := {
-	"right": {"tex": preload("res://assets/characters/settler_run_right.png"), "frames": 29, "size": Vector2i(31, 47), "offset": Vector2(-15, -45), "cycle": 0.9},
+	"right": {"tex": preload("res://assets/characters/settler_run_right.png"), "frames": 29, "size": Vector2i(31, 47), "offset": Vector2(-15, -45), "cycle": 0.8},
 	"up": {"tex": preload("res://assets/characters/settler_run_up.png"), "frames": 16, "size": Vector2i(27, 48), "offset": Vector2(-13, -44), "cycle": 0.5},
 	"down": {"tex": preload("res://assets/characters/settler_run_down.png"), "frames": 12, "size": Vector2i(31, 45), "offset": Vector2(-16, -42), "cycle": 0.5},
 }

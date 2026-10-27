@@ -36,7 +36,7 @@ Don't Starve-style 3/4 camera. All art is drawn in code (no image assets yet).
 ## Current state (prototype)
 - Hand-painted World in main.tscn: grass Ground layer (30x30 tiles), Props layer with a seeded starter forest around a central clearing, Spawn marker.
 - Props (trees, pine, bush, stump, rock) are scenes with trunk collision, a vision blocker (trees/bush), and fade when the player is behind them. Paintable via the Props TileMapLayer (scene tiles, 16 px grid).
-- Settler: AnimatedSprite2D built in code — idle stills + H3 run cycles (up/down/right, left mirrored), WASD, Shift sprint with stamina. Every run cycle is normalised to `RUN_CYCLE_TIME` (0.5 s) at walk speed and plays faster when sprinting.
+- Settler: AnimatedSprite2D built in code — idle stills + H3 run cycles (up/down/right, left mirrored), WASD, Shift sprint with stamina. Every run cycle is given its own `cycle` time in player.gd `RUN` (0.5 s by default) at walk speed and plays faster when sprinting.
 - Fog of war via the player's vision light; invisible walls + camera limits follow the painted ground.
 - Debug: F toggle fog, mouse wheel zoom. Old procedural map still available (Main > Use Generated Map), but it uses the old code-drawn art.
 
@@ -47,7 +47,7 @@ Don't Starve-style 3/4 camera. All art is drawn in code (no image assets yet).
 - `assets/tiles/` — grass.png + ground_tileset.tres.
 - `tools/build_world.gd` — rebuilds prop scenes, tilesets and the World (OVERWRITES painted World). Prop collision/vision sizes are in its PROPS table.
 - `scripts/main.gd` — entry point: darkness, player, world setup, borders, HUD, input.
-- `scripts/player.gd` — settler movement, sprite direction, vision light, camera. Tunables: `WALK_SPEED`, `SPRINT_SPEED`, `STAMINA_*`, `RUN_CYCLE_TIME`.
+- `scripts/player.gd` — settler movement, sprite direction, vision light, camera. Tunables: `WALK_SPEED`, `SPRINT_SPEED`, `STAMINA_*`, `RUN[...].cycle` (per-direction run speed).
 - `scripts/map_generator.gd`, `scripts/prop.gd`, `scripts/map_preview.gd` — old procedural map (optional).
 
 ## Roadmap
