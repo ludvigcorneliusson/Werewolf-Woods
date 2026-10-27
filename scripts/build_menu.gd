@@ -143,8 +143,13 @@ func _refresh() -> void:
 		name_l.size_flags_vertical = Control.SIZE_FILL
 		name_l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		h.add_child(name_l)
-		# Cost: icon + have/need per item, red when short.
-		for item: String in b.cost:
+		# Cost: icon + have/need per item, red when short ("Free" in god mode).
+		if Buildables.free_build:
+			var free := _label("Free", 15, Color(1.0, 0.85, 0.4))
+			free.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+			free.size_flags_vertical = Control.SIZE_FILL
+			h.add_child(free)
+		for item: String in (b.cost if not Buildables.free_build else {}):
 			var need := int(b.cost[item])
 			var have: int = inventory.count(item) if inventory else 0
 			h.add_child(_icon(Items.get_item(item).get("icon"), 24))

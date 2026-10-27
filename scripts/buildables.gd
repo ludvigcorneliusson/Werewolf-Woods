@@ -61,6 +61,10 @@ const ALL := {
 	# 		"cost": {"log": 4}, "icon": ..., "footprint": [...], "needs": "workbench"},
 }
 
+## God mode (main.gd _set_god_mode): everything is free and every recipe shows,
+## workbench or not.
+static var free_build := false
+
 ## How close you must stand to a workbench for its recipes to show (world px,
 ## measured from the workbench's front edge centre).
 const WORKBENCH_RANGE := 90.0
@@ -80,13 +84,15 @@ static func available(tree: SceneTree, player_pos: Vector2) -> Array[String]:
 	var bench := near_workbench(tree, player_pos)
 	for id: String in ALL:
 		var needs: String = ALL[id].get("needs", "")
-		if needs == "workbench" and not bench:
+		if needs == "workbench" and not bench and not free_build:
 			continue
 		out.append(id)
 	return out
 
 
 static func can_afford(id: String, inventory: Node) -> bool:
+	if free_build:
+		return true
 	if inventory == null:
 		return false
 	var cost: Dictionary = ALL[id].cost
@@ -97,6 +103,8 @@ static func can_afford(id: String, inventory: Node) -> bool:
 
 
 static func pay(id: String, inventory: Node) -> void:
+	if free_build:
+		return
 	var cost: Dictionary = ALL[id].cost
 	for item: String in cost:
 		inventory.remove(item, int(cost[item]))

@@ -97,7 +97,7 @@ Don't Starve-style 3/4 camera. All art is drawn in code (no image assets yet).
 - Wind: each prop sprite is sheared like a hinge at its base on a plain sine wave (vertex shader in prop_fade.gdshader); timing shifts slowly across the map so the forest moves as a wave. Settings in Main > Wind (strength, speed, lean, wave length, direction); per-prop "Sway" on each prop scene root (trees 1.0, dead trees 0.35, ferns 0.6, grass 0.8, rocks/logs/stumps 0).
 - Plants: ferns, grass and mushrooms bend away when the settler walks through and spring back with a wobble (scripts/plant_push.gd, Sprite skew, only plants near the player). Settings in Main > Plants; per-plant "Bend" on each prop scene root. Only the local player pushes plants so far.
 - Campfire: CPUParticles2D Fire/Core/Embers/Smoke + flickering PointLight2D that casts trunk shadows (scripts/campfire.gd: light_radius, light_energy, flicker_*).
-- Debug: F = god mode (no fog, mouse-wheel zoom, walk through everything, 4x speed, free camera; F again restores). Settings in Main > God Mode. Old procedural map still available (Main > Use Generated Map), but it uses the old code-drawn art.
+- Debug: F = god mode (no fog, mouse-wheel zoom, walk through everything, 4x speed, free camera, free building - every recipe shows as "Free", workbench recipes too, and nothing is taken from the backpack (buildables.gd static free_build, reset each round); F again restores). Settings in Main > God Mode. Old procedural map still available (Main > Use Generated Map), but it uses the old code-drawn art.
 
 ## Files
 - `main.tscn` — Main > World (y-sorted): Ground (TileMapLayer, grass), Props (TileMapLayer, scene tiles), Spawn (Marker2D).

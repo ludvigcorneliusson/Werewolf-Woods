@@ -761,6 +761,7 @@ var _plant_push: Node
 
 func _ready() -> void:
 	_setup_input()
+	Buildables.free_build = false               # static: don't carry god mode into a new round
 	GameSettings.load_settings()
 	GameSettings.apply_display(get_window())
 	# Our arrow (also set in Project Settings > Display > Mouse Cursor, so it's
@@ -1768,6 +1769,9 @@ func _set_god_mode(on: bool) -> void:
 		cam.reset_smoothing()
 	player.god_mode = on
 	player.god_speed = god_speed
+	Buildables.free_build = on                  # build anything, no materials
+	if _build_menu and _build_menu.is_open():
+		_build_menu.close()                     # reopen to see the free list
 	if _god_label:
 		_god_label.visible = on
 
@@ -1884,7 +1888,7 @@ func _build_hud() -> void:
 	hud.add_child(_coord_label)
 
 	_god_label = Label.new()
-	_god_label.text = "GOD MODE  ·  no fog · walk through anything · fast · mouse wheel zoom  ·  F to exit"
+	_god_label.text = "GOD MODE  ·  no fog · walk through anything · fast · free building · mouse wheel zoom  ·  F to exit"
 	_god_label.position = Vector2(16, 64)
 	_god_label.add_theme_color_override("font_color", Color(1.0, 0.85, 0.3))
 	_god_label.add_theme_color_override("font_outline_color", Color.BLACK)
