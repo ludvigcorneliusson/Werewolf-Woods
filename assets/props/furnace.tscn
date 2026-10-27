@@ -1,0 +1,26 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/furnace.gd" id="1_furn"]
+[ext_resource type="Texture2D" path="res://assets/props/furnace.png" id="2_furn"]
+
+[sub_resource type="OccluderPolygon2D" id="OccluderPolygon2D_furn"]
+polygon = PackedVector2Array(22.0, 0.0, 19.0526, 3.0, 11.0, 5.1962, 0.0, 6.0, -11.0, 5.1962, -19.0526, 3.0, -22.0, 0.0, -19.0526, -3.0, -11.0, -5.1962, -0.0, -6.0, 11.0, -5.1962, 19.0526, -3.0)
+
+[node name="Furnace" type="Node2D"]
+script = ExtResource("1_furn")
+
+[node name="Sprite" type="Sprite2D" parent="."]
+light_mask = 2
+texture = ExtResource("2_furn")
+centered = false
+offset = Vector2(-31, -51)
+
+[node name="Body" type="StaticBody2D" parent="."]
+
+[node name="Shape" type="CollisionPolygon2D" parent="Body"]
+position = Vector2(0, -7)
+polygon = PackedVector2Array(26.0, 0.0, 22.5167, 4.0, 13.0, 6.9282, 0.0, 8.0, -13.0, 6.9282, -22.5167, 4.0, -26.0, 0.0, -22.5167, -4.0, -13.0, -6.9282, -0.0, -8.0, 13.0, -6.9282, 22.5167, -4.0)
+
+[node name="VisionBlocker" type="LightOccluder2D" parent="."]
+position = Vector2(0, -7)
+occluder = SubResource("OccluderPolygon2D_furn")

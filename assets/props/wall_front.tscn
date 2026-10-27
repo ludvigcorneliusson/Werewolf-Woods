@@ -1,0 +1,26 @@
+[gd_scene format=3]
+
+[ext_resource type="Material" path="res://assets/props/varied_material.tres" id="1_mat"]
+[ext_resource type="Texture2D" path="res://assets/props/wall_front.png" id="2_tex"]
+
+[sub_resource type="OccluderPolygon2D" id="OccluderPolygon2D_w"]
+polygon = PackedVector2Array(-22.00, -3.00, 22.00, -3.00, 22.00, 3.00, -22.00, 3.00)
+
+[node name="WallFront" type="Node2D" groups=["walls"]]
+metadata/wall_ends = [Vector2(-25, 0), Vector2(25, 0)]
+
+[node name="Sprite" type="Sprite2D" parent="."]
+self_modulate = Color(0.5, 0.5, 0.5, 0.5)
+light_mask = 2
+material = ExtResource("1_mat")
+texture = ExtResource("2_tex")
+centered = false
+offset = Vector2(-26, -52)
+
+[node name="Body" type="StaticBody2D" parent="."]
+
+[node name="Shape" type="CollisionPolygon2D" parent="Body"]
+polygon = PackedVector2Array(-22.00, -3.00, 22.00, -3.00, 22.00, 3.00, -22.00, 3.00)
+
+[node name="VisionBlocker" type="LightOccluder2D" parent="."]
+occluder = SubResource("OccluderPolygon2D_w")

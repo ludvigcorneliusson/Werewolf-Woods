@@ -36,6 +36,9 @@ var _tip: PanelContainer             # item name under the mouse
 var _tip_label: Label
 ## True while the Esc menu is open (main.gd): no dragging or tooltips then.
 var blocked := false
+## Called with (id, count, screen pos) when a backpack item is dropped outside
+## the HUD's slots; returns how many it took (set by furnace_panel.gd).
+var drop_target := Callable()
 var _prompt: Label
 var _hurt: ColorRect
 var _notes: Control
@@ -323,6 +326,8 @@ func _input(event: InputEvent) -> void:
 				var to := _slot_at(at)
 				if to >= 0:
 					_drop(_drag_from, to)
+				elif _drag_from < TOOL_BASE and drop_target.is_valid():
+					_drop_outside(_drag_from, at)
 				_end_drag()
 			elif _press_slot >= TOOL_BASE and _slot_at(at) == _press_slot:
 				select_tool(_press_slot - TOOL_BASE)      # click on a tool = hold it
@@ -398,6 +403,24 @@ func _drop(from: int, to: int) -> void:
 		inventory.slots[from] = {"id": b, "count": 1} if b != "" else {}
 		inventory.changed.emit()
 	select_tool(selected_tool)                       # the tool in hand may have changed
+
+
+## A backpack item let go outside the HUD's slots: offer it to drop_target
+## (e.g. the furnace panel), which returns how many it took.
+func _drop_outside(from: int, at: Vector2) -> void:
+	var s: Dictionary = inventory.slots[from]
+	var id: String = s.get("id", "")
+	var count: int = s.get("count", 0)
+	if id == "" or count <= 0:
+		return
+	var took: int = drop_target.call(id, count, at)
+	if took <= 0:
+		return
+	if took >= count:
+		inventory.slots[from] = {}
+	else:
+		inventory.slots[from] = {"id": id, "count": count - took}
+	inventory.changed.emit()
 
 
 func _is_tool(id: String) -> bool:

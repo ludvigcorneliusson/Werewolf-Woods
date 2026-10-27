@@ -7,6 +7,9 @@ extends RefCounted
 ##   icon      - menu picture
 ##   footprint - [centre offset from the origin, radius or Vector2 size] of the
 ##               ground it needs free (match the scene's collision)
+##   variants  - optional: scenes R cycles through while placing (walls). Each
+##               has metadata/wall_ends (its two ground ends): the footprint is
+##               the strip between them, and it snaps end to end to built walls
 ##   needs     - optional: "workbench" = only shows up in the build menu while
 ##               you stand near a workbench you've built (advanced recipes)
 
@@ -31,6 +34,27 @@ const ALL := {
 		"cost": {"stone": 5, "log": 5},
 		"icon": preload("res://assets/props/workbench.png"),
 		"footprint": [Vector2(-3, -6), Vector2(55, 10)],
+	},
+	"furnace": {
+		"name": "Furnace",
+		"scene": "res://assets/props/furnace.tscn",
+		"cost": {"stone": 10},
+		"icon": preload("res://assets/props/furnace.png"),
+		"footprint": [Vector2(0, -7), 24.0],
+	},
+	"wall": {
+		"name": "Wall",
+		"scene": "res://assets/props/wall_front.tscn",
+		"cost": {"log": 2},
+		"icon": preload("res://assets/props/wall_front.png"),
+		"footprint": [Vector2.ZERO, Vector2(40, 4)],
+		"variants": [
+			"res://assets/props/wall_front.tscn",
+			"res://assets/props/wall_front_plain.tscn",
+			"res://assets/props/wall_end.tscn",
+			"res://assets/props/wall_diag_up.tscn",
+			"res://assets/props/wall_diag_down.tscn",
+		],
 	},
 	# Advanced recipes go here with "needs": "workbench", e.g.
 	# "chest": {"name": "Chest", "scene": "res://assets/props/chest.tscn",

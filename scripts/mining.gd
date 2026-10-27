@@ -10,13 +10,21 @@ signal node_broken(node: Node2D, image: String)
 
 ## Minable prop images -> kind (sets how many hits: hits_to_break[kind]), what
 ## they drop ("drops": [item id, min, max] each) and the colours of the chips.
-## Copper deposits give ore plus a little stone; the small one about half.
+## Iron and silver deposits give ore plus a little stone; the small iron one about half.
 const STONE_CHIPS := {"chip": Color(0.62, 0.5, 0.47), "ore_chip": Color(0.8, 0.66, 0.6)}
 const NODES := {
-	"copper_node.png": {"kind": "ore", "drops": [["copper_ore", 2, 3], ["stone", 1, 2]],
+	"iron_node.png": {"kind": "ore", "drops": [["iron_ore", 2, 3], ["stone", 1, 2]],
 		"chip": Color(0.62, 0.57, 0.53), "ore_chip": Color(0.88, 0.45, 0.22)},
-	"copper_node_small.png": {"kind": "ore_small", "drops": [["copper_ore", 1, 2], ["stone", 0, 1]],
+	"iron_node_small.png": {"kind": "ore_small", "drops": [["iron_ore", 1, 2], ["stone", 0, 1]],
 		"chip": Color(0.62, 0.57, 0.53), "ore_chip": Color(0.88, 0.45, 0.22)},
+	"silver_node_a.png": {"kind": "ore", "drops": [["silver_ore", 2, 3], ["stone", 1, 2]],
+		"chip": Color(0.5, 0.52, 0.55), "ore_chip": Color(0.86, 0.88, 0.94)},
+	"silver_node_b.png": {"kind": "ore", "drops": [["silver_ore", 2, 3], ["stone", 1, 2]],
+		"chip": Color(0.5, 0.52, 0.55), "ore_chip": Color(0.86, 0.88, 0.94)},
+	"silver_node_c.png": {"kind": "ore", "drops": [["silver_ore", 2, 3], ["stone", 1, 2]],
+		"chip": Color(0.5, 0.52, 0.55), "ore_chip": Color(0.86, 0.88, 0.94)},
+	"silver_node_d.png": {"kind": "ore", "drops": [["silver_ore", 2, 3], ["stone", 1, 2]],
+		"chip": Color(0.5, 0.52, 0.55), "ore_chip": Color(0.86, 0.88, 0.94)},
 	"stone_node_a.png": {"kind": "stone", "drops": [["stone", 3, 5]],
 		"chip": STONE_CHIPS.chip, "ore_chip": STONE_CHIPS.ore_chip},
 	"stone_node_b.png": {"kind": "stone", "drops": [["stone", 3, 4]],

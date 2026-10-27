@@ -19,13 +19,15 @@ uniform float fade_softness = 5.0;      // soft edge (world px)
 uniform float faded_alpha = 0.35;
 uniform bool color_variance = false;
 
-// Ore gleam (copper_material.tres only; 0 = off for every other prop). Now and
+// Ore gleam (ore_material.tres / silver_material.tres only; 0 = off for every other prop). Now and
 // then a soft glint sweeps diagonally across the ore-coloured pixels, and their
 // brightest pixels twinkle faintly. Each node has its own timing (from its
 // position). Added before the night darkness, so it only shows where it's lit.
 uniform float gleam = 0.0;              // strength (0.25 = very slight)
 uniform float gleam_period = 6.0;       // seconds between glints on one node
 uniform vec3 gleam_color : source_color = vec3(1.0, 0.88, 0.66);
+// Which pixels count as ore: 0 = orange/red (iron), 1 = bright cool metal (silver).
+uniform int gleam_mode = 0;
 
 // Wind (set from main.gd's Wind settings). Plain sine sway: each prop's sprite is
 // bent like a hinge at its base - the top moves sideways, the base stays put.
@@ -143,6 +145,11 @@ void fragment() {
 		vec3 raw = rgb2hsv(tex.rgb);
 		// Ore = saturated orange/red pixels that aren't the dark outline.
 		float ore = step(raw.x, 0.11) * smoothstep(0.4, 0.55, raw.y) * smoothstep(0.3, 0.45, raw.z) * tex.a;
+		if (gleam_mode == 1) {
+			// Silver = light, blue-tinted pixels (the grey rock is darker / neutral).
+			float cool = step(0.5, raw.x) * step(raw.x, 0.8) * smoothstep(0.06, 0.14, raw.y);
+			ore = max(cool * smoothstep(0.62, 0.78, raw.z), step(raw.y, 0.1) * smoothstep(0.82, 0.9, raw.z)) * tex.a;
+		}
 		vec2 texel = floor(UV / TEXTURE_PIXEL_SIZE) * TEXTURE_PIXEL_SIZE;   // whole art pixels: stays crisp
 		float h = fract(sin(dot(base_pos, vec2(12.9898, 78.233))) * 43758.5453);
 		float t = fract(TIME / max(gleam_period, 0.1) + h);

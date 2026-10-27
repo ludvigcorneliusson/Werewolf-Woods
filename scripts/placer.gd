@@ -5,6 +5,9 @@ extends Node2D
 ## rocks, you) gets its collision outline drawn in red. Left click builds it
 ## (the materials come out of the backpack), right click / Esc / B cancels.
 ## It can't be placed out of reach, off the map or on top of anything solid.
+## Buildables with "variants" (walls): R cycles them, they sit on a grid
+## (GRID px) and an end that comes near the end of a built wall (SNAP px)
+## clicks onto it, so walls join up into a fence line.
 ## Created by main.gd.
 
 signal placed(id: String, node: Node2D)
@@ -13,6 +16,14 @@ signal cancelled
 const Buildables := preload("res://scripts/buildables.gd")
 const OK_COLOR := Color(0.45, 0.95, 0.45)
 const BAD_COLOR := Color(1.0, 0.25, 0.22)
+const END_COLOR := Color(1.0, 0.85, 0.35)
+## Walls: grid step and how close an end must come to a built wall's end to join it.
+const GRID := 4.0
+const SNAP := 20.0
+## Walls: the ground strip checked for room stops this far short of each end and
+## is this thick (so walls can meet end to end).
+const WALL_INSET := 5.0
+const WALL_THICK := 4.0
 
 var world: Node2D
 var player: Node2D
@@ -26,6 +37,10 @@ var _ghost: Node2D
 var _valid := false
 var _reason := ""
 var _blockers: Array = []          # colliders in the way: [CollisionObject2D, ...]
+var _variant := 0                  # which of the buildable's "variants" (R)
+var _ends: Array = []              # the variant's two ends (local), [] = not a wall
+var _joined: Array = []            # built walls the preview is snapped onto
+var _last_variant := {}            # id -> variant, remembered between builds
 
 
 func _ready() -> void:
@@ -40,9 +55,39 @@ func is_placing() -> bool:
 func start(id: String) -> void:
 	cancel(true)
 	active = id
-	_ghost = _make_ghost(Buildables.ALL[id].scene)
+	_variant = int(_last_variant.get(id, 0))
+	_rebuild_ghost()
+
+
+## The scene being placed (the chosen variant, for walls).
+func _scene() -> String:
+	var b: Dictionary = Buildables.ALL[active]
+	var v: Array = b.get("variants", [])
+	return v[_variant % v.size()] if not v.is_empty() else b.scene
+
+
+func _rebuild_ghost() -> void:
+	if is_instance_valid(_ghost):
+		_ghost.free()
+	var packed := load(_scene()) as PackedScene
+	_ghost = _make_ghost(_scene())
 	add_child(_ghost)
+	_ends = []
+	var probe := packed.instantiate()
+	if probe.has_meta("wall_ends"):
+		_ends = probe.get_meta("wall_ends")
+	probe.free()
 	_update()
+
+
+## Footprint: [centre offset, radius or Vector2 size, angle].
+func _footprint() -> Array:
+	if _ends.size() == 2:
+		var a: Vector2 = _ends[0]
+		var b: Vector2 = _ends[1]
+		return [(a + b) / 2.0, Vector2(maxf(a.distance_to(b) - WALL_INSET * 2.0, 2.0), WALL_THICK), (b - a).angle()]
+	var fp: Array = Buildables.ALL[active].footprint
+	return [fp[0], fp[1], 0.0]
 
 
 ## Stops placing (quiet = don't fire `cancelled`, e.g. when switching).
@@ -76,6 +121,11 @@ func _unhandled_input(event: InputEvent) -> void:
 		elif event.button_index == MOUSE_BUTTON_RIGHT:
 			get_viewport().set_input_as_handled()
 			cancel()
+	elif event.is_action_pressed("rotate") and Buildables.ALL[active].has("variants"):
+		get_viewport().set_input_as_handled()
+		_variant = (_variant + 1) % (Buildables.ALL[active].variants as Array).size()
+		_last_variant[active] = _variant
+		_rebuild_ghost()
 	elif event.is_action_pressed("ui_cancel") or event.is_action_pressed("build"):
 		get_viewport().set_input_as_handled()
 		cancel()
@@ -90,20 +140,28 @@ func _try_place() -> void:
 	var id := active
 	var b: Dictionary = Buildables.ALL[id]
 	Buildables.pay(id, inventory)
-	var node := (load(b.scene) as PackedScene).instantiate() as Node2D
+	var node := (load(_scene()) as PackedScene).instantiate() as Node2D
 	node.position = world.to_local(_ghost.global_position)
 	world.add_child(node)
+	if b.has("variants") and Buildables.can_afford(id, inventory):
+		placed.emit(id, node)                  # walls: keep placing the next one
+		_update()
+		return
 	cancel(true)
 	placed.emit(id, node)
 
 
 ## Where the mouse points, whether it fits there, and what's in the way.
 func _update() -> void:
-	var b: Dictionary = Buildables.ALL[active]
 	var at := get_global_mouse_position().round()
+	_joined.clear()
+	if _ends.size() == 2:
+		at = _snap_wall(at)
 	_ghost.global_position = at
-	var centre: Vector2 = at + b.footprint[0]
-	var size: Variant = b.footprint[1]          # radius (round) or Vector2 (rectangle)
+	var fp := _footprint()
+	var centre: Vector2 = at + fp[0]
+	var size: Variant = fp[1]                   # radius (round) or Vector2 (rectangle)
+	var angle: float = fp[2]
 	var is_rect := size is Vector2
 	var half: Vector2 = (size / 2.0) if is_rect else Vector2(size, size)
 	_blockers.clear()
@@ -128,10 +186,12 @@ func _update() -> void:
 		(shape as CircleShape2D).radius = size
 	var q := PhysicsShapeQueryParameters2D.new()
 	q.shape = shape
-	q.transform = Transform2D(0.0, centre)
+	q.transform = Transform2D(angle, centre)
 	q.collide_with_bodies = true
 	for r in get_world_2d().direct_space_state.intersect_shape(q, 16):
 		var c := r.collider as CollisionObject2D
+		if c and _joined.has(c.get_parent()):
+			continue                               # the wall it joins onto, end to end
 		if c and not _blockers.has(c):
 			_blockers.append(c)
 	if not _blockers.is_empty() and _valid:
@@ -144,17 +204,47 @@ func _update() -> void:
 func _draw() -> void:
 	if active == "" or not is_instance_valid(_ghost):
 		return
-	var b: Dictionary = Buildables.ALL[active]
 	var col := OK_COLOR if _valid else BAD_COLOR
-	var centre: Vector2 = to_local(_ghost.global_position + b.footprint[0])
+	var fp := _footprint()
+	var centre: Vector2 = to_local(_ghost.global_position + fp[0])
 	# Footprint, squashed like the 3/4 ground.
-	if b.footprint[1] is Vector2:
-		var r := Rect2(centre - b.footprint[1] / 2.0, b.footprint[1])
-		draw_rect(r, Color(col, 0.22), true)
-		draw_rect(r, col, false, 1.5)
+	if fp[1] is Vector2:
+		var e: Vector2 = fp[1] / 2.0
+		var xf := Transform2D(fp[2], centre)
+		var pts := PackedVector2Array([xf * Vector2(-e.x, -e.y), xf * Vector2(e.x, -e.y),
+				xf * Vector2(e.x, e.y), xf * Vector2(-e.x, e.y)])
+		draw_colored_polygon(pts, Color(col, 0.22))
+		pts.append(pts[0])
+		draw_polyline(pts, col, 1.5)
 	else:
-		_ellipse(centre, b.footprint[1], Color(col, 0.22), true)
-		_ellipse(centre, b.footprint[1], col, false)
+		_ellipse(centre, fp[1], Color(col, 0.22), true)
+		_ellipse(centre, fp[1], col, false)
+	# Walls: both ends (filled when joined to a built wall) and the ends of the
+	# built walls nearby it can join.
+	if _ends.size() == 2:
+		for w in get_tree().get_nodes_in_group("walls"):
+			var wn := w as Node2D
+			if wn.global_position.distance_to(_ghost.global_position) > 120.0:
+				continue
+			for e2: Vector2 in wn.get_meta("wall_ends", []):
+				draw_arc(to_local(wn.global_position + e2), 2.5, 0, TAU, 12, Color(END_COLOR, 0.6), 1.0)
+		for e1: Vector2 in _ends:
+			var p := to_local(_ghost.global_position + e1)
+			var hit := false
+			for w in _joined:
+				for e2: Vector2 in (w as Node2D).get_meta("wall_ends", []):
+					if ((w as Node2D).global_position + e2).distance_to(_ghost.global_position + e1) < 0.5:
+						hit = true
+			if hit:
+				draw_circle(p, 3.0, END_COLOR)
+			else:
+				draw_arc(p, 3.0, 0, TAU, 12, END_COLOR, 1.5)
+		var font := ThemeDB.fallback_font
+		var hint := "R: turn  (%d/%d)" % [_variant + 1, (Buildables.ALL[active].variants as Array).size()]
+		var w := font.get_string_size(hint, HORIZONTAL_ALIGNMENT_LEFT, -1, 8).x
+		var hp := (centre + Vector2(-w / 2.0, 16.0)).round()
+		draw_string_outline(font, hp, hint, HORIZONTAL_ALIGNMENT_LEFT, -1, 8, 3, Color(0, 0, 0, 0.8))
+		draw_string(font, hp, hint, HORIZONTAL_ALIGNMENT_LEFT, -1, 8, Color(1, 1, 1, 0.9))
 	# Reach ring around you while it's too far.
 	if _reason == "Too far away" and is_instance_valid(player):
 		_ellipse(to_local(player.global_position), reach, Color(BAD_COLOR, 0.5), false)
@@ -194,6 +284,33 @@ func _draw_collision(body: CollisionObject2D) -> void:
 				draw_polyline(pts2, BAD_COLOR, 1.5)
 
 
+## Walls: on the grid, or - if one of its ends comes within SNAP of a built
+## wall's end - moved so the two ends meet. Fills _joined.
+func _snap_wall(at: Vector2) -> Vector2:
+	var best := INF
+	var best_at := Vector2((at / GRID).round() * GRID)
+	for w in get_tree().get_nodes_in_group("walls"):
+		var wn := w as Node2D
+		if wn.global_position.distance_to(at) > 120.0:
+			continue
+		for e2: Vector2 in wn.get_meta("wall_ends", []):
+			var target := wn.global_position + e2
+			for e1: Vector2 in _ends:
+				var d := (at + e1).distance_to(target)
+				if d < SNAP and d < best:
+					best = d
+					best_at = target - e1
+	if best < INF:
+		# Every built wall that has an end exactly where one of ours lands.
+		for w in get_tree().get_nodes_in_group("walls"):
+			var wn := w as Node2D
+			for e2: Vector2 in wn.get_meta("wall_ends", []):
+				for e1: Vector2 in _ends:
+					if (best_at + e1).distance_to(wn.global_position + e2) < 0.5 and not _joined.has(wn):
+						_joined.append(wn)
+	return best_at
+
+
 func _ellipse(c: Vector2, r: float, color: Color, filled: bool) -> void:
 	var pts := PackedVector2Array()
 	for i in 33:
@@ -210,6 +327,8 @@ func _ellipse(c: Vector2, r: float, color: Color, filled: bool) -> void:
 func _make_ghost(path: String) -> Node2D:
 	var g := (load(path) as PackedScene).instantiate() as Node2D
 	g.set_script(null)
+	for grp in g.get_groups():
+		g.remove_from_group(grp)                  # e.g. "walls": the preview isn't a built wall
 	for c in g.get_children():
 		if c is CollisionObject2D or c is Light2D or c is LightOccluder2D \
 				or c is AudioStreamPlayer or c is AudioStreamPlayer2D:

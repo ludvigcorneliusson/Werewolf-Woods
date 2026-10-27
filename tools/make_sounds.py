@@ -3,8 +3,6 @@
   tree_fall.wav  - a deep thud with a leafy rustle, played when a tree lands
   mine_hit.wav   - pick on rock: a stony knock with a short metallic ring
   rock_break.wav - an ore node crumbling: rubble rattling over a low thud
-  footsteps/grass_soft_1-3.wav - the settler's soft grass steps (three takes, cycled)
-  footsteps/werewolf_step.wav  - the werewolf's heavier paw step
   swing_axe / swing_pickaxe / swing_spade / swing_can.wav - tool swing whooshes
 Usage: python3 tools/make_sounds.py <project folder>"""
 import sys, wave
@@ -85,42 +83,7 @@ def save_at(path, x, peak):
     w.writeframes((x * 32767).astype(np.int16).tobytes()); w.close()
 
 
-# Soft grass steps: a dense crunch of tiny blade snaps (heel, then a smaller toe
-# roll) through a band-pass, over a very soft low thud. Three takes so walking
-# doesn't sound like one sample on repeat.
-for take in range(1, 4):
-    r = np.random.default_rng(100 + take)
-    t = np.arange(int(sr * 0.22)) / sr
-    x = np.zeros_like(t)
-    for start, length, count, amp in [(0.0, 0.07, 46, 1.0), (0.075, 0.06, 26, 0.55)]:
-        for k in range(count):
-            t0 = start + r.uniform(0, length) ** 1.3 * length ** -0.3
-            i0 = int(t0 * sr)
-            n = int(sr * r.uniform(0.0008, 0.003))
-            if i0 + n >= len(x):
-                continue
-            x[i0:i0 + n] += r.standard_normal(n) * np.exp(-np.arange(n) / (n * 0.3)) * amp * r.uniform(0.3, 1.0)
-    crunch = biquad_bp(x, np.full(len(x), r.uniform(2600, 3400)), 0.7)
-    thud = lowpass(r.standard_normal(len(t)), 0.03) * np.exp(-t * 45) * 3.0
-    step = crunch + thud
-    step *= np.minimum(1.0, t / 0.003)                    # no click at the start
-    step *= np.clip((0.22 - t) / 0.03, 0, 1)              # fade the tail
-    save_at(f'{P}/assets/sounds/footsteps/grass_soft_{take}.wav', step, 0.55)
-
-
-# Werewolf: a heavier paw - deeper thud, lower, coarser crunch.
-r = np.random.default_rng(200)
-t = np.arange(int(sr * 0.3)) / sr
-x = np.zeros_like(t)
-for k in range(40):
-    t0 = r.uniform(0, 0.09)
-    i0 = int(t0 * sr)
-    n = int(sr * r.uniform(0.002, 0.006))
-    x[i0:i0 + n] += r.standard_normal(n) * np.exp(-np.arange(n) / (n * 0.3)) * r.uniform(0.3, 1.0)
-crunch = biquad_bp(x, np.full(len(x), 1500.0), 0.6)
-thud = np.sin(2 * np.pi * 70 * t) * np.exp(-t * 30) * 1.6 + lowpass(r.standard_normal(len(t)), 0.04) * np.exp(-t * 25) * 2.5
-w = (crunch + thud) * np.minimum(1.0, t / 0.002) * np.clip((0.3 - t) / 0.05, 0, 1)
-save_at(f'{P}/assets/sounds/footsteps/werewolf_step.wav', w, 0.7)
+# (Footstep sounds were removed - the synthesized ones did not work out.)
 
 
 # Swing whooshes: noise through a band-pass sweeping up (the tool speeding

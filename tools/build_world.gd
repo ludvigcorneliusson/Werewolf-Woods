@@ -59,13 +59,26 @@ const PROPS := [
 		"solid": {"capsule": Vector2(6, 94), "at": Vector2(0, -5)}},
 	{"name": "pebble", "foot": 1, "solid": {}, "vision": Vector2.ZERO, "big": false},
 	{"name": "stick", "foot": 2, "solid": {}, "vision": Vector2.ZERO, "big": false},
-	# Copper ore node (mined with the pickaxe, scripts/mining.gd). Own material:
+	# Iron ore node (mined with the pickaxe, scripts/mining.gd). Own material:
 	# the shared prop shader with the ore gleam turned on.
-	{"name": "copper_node", "foot": 4, "solid": {"ellipse": Vector2(22, 7), "at": Vector2(0, -6)}, "vision": Vector2(20, 6), "vision_at": Vector2(0, -6), "big": true,
-		"material": "res://assets/props/copper_material.tres",
+	{"name": "iron_node", "foot": 4, "solid": {"ellipse": Vector2(22, 7), "at": Vector2(0, -6)}, "vision": Vector2(20, 6), "vision_at": Vector2(0, -6), "big": true,
+		"material": "res://assets/props/ore_material.tres",
 		"vary": {"hue_variance": 0.0, "saturation_variance": 0.05, "brightness_variance": 0.06}},
-	{"name": "copper_node_small", "foot": 3, "solid": {"ellipse": Vector2(15, 5), "at": Vector2(-1, -5)}, "vision": Vector2(13, 4), "vision_at": Vector2(-1, -5), "big": true,
-		"material": "res://assets/props/copper_material.tres",
+	{"name": "iron_node_small", "foot": 3, "solid": {"ellipse": Vector2(15, 5), "at": Vector2(-1, -5)}, "vision": Vector2(13, 4), "vision_at": Vector2(-1, -5), "big": true,
+		"material": "res://assets/props/ore_material.tres",
+		"vary": {"hue_variance": 0.0, "saturation_variance": 0.05, "brightness_variance": 0.06}},
+	# Silver deposits (rarer than iron, same mining).
+	{"name": "silver_node_a", "foot": 4, "solid": {"ellipse": Vector2(24, 7), "at": Vector2(0, -6)}, "vision": Vector2(22, 6), "vision_at": Vector2(0, -6), "big": true,
+		"material": "res://assets/props/silver_material.tres",
+		"vary": {"hue_variance": 0.0, "saturation_variance": 0.05, "brightness_variance": 0.06}},
+	{"name": "silver_node_b", "foot": 4, "solid": {"ellipse": Vector2(24, 7), "at": Vector2(0, -6)}, "vision": Vector2(22, 6), "vision_at": Vector2(0, -6), "big": true,
+		"material": "res://assets/props/silver_material.tres",
+		"vary": {"hue_variance": 0.0, "saturation_variance": 0.05, "brightness_variance": 0.06}},
+	{"name": "silver_node_c", "foot": 4, "solid": {"ellipse": Vector2(23, 7), "at": Vector2(0, -6)}, "vision": Vector2(21, 6), "vision_at": Vector2(0, -6), "big": true,
+		"material": "res://assets/props/silver_material.tres",
+		"vary": {"hue_variance": 0.0, "saturation_variance": 0.05, "brightness_variance": 0.06}},
+	{"name": "silver_node_d", "foot": 4, "solid": {"ellipse": Vector2(30, 8), "at": Vector2(0, -6)}, "vision": Vector2(28, 7), "vision_at": Vector2(0, -6), "big": true,
+		"material": "res://assets/props/silver_material.tres",
 		"vary": {"hue_variance": 0.0, "saturation_variance": 0.05, "brightness_variance": 0.06}},
 	# Stone nodes (mined with the pickaxe for stone, scripts/mining.gd): placed in clusters.
 	{"name": "stone_node_a", "foot": 5, "solid": {"ellipse": Vector2(38, 9), "at": Vector2(0, -8)}, "vision": Vector2(34, 8), "vision_at": Vector2(0, -8), "big": true, "vary": {"hue_variance": 0.0, "saturation_variance": 0.06, "brightness_variance": 0.08}},

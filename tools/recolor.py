@@ -28,12 +28,17 @@ RAMPS = {
  'glow':   ['#2c3a52','#6fd3e0'],
  'night':  ['#0b0f1a','#1a2238','#2c3a52'],
  'cream':  ['#8f7350','#c9b98a','#e8e0c8','#f2e6c4'],
+ 'silver': ['#2a2f40','#4a5268','#7a8299','#b4bacb','#e4e7ee'],
 }
 OUTLINE = np.array(H('#1e1410'), dtype=np.uint8)
 ramp_rgb = {k: np.array([H(c) for c in v], float) for k, v in RAMPS.items()}
 ramp_lab = {k: srgb_to_lab(v) for k, v in ramp_rgb.items()}
 
-def map_color(lab, allowed=None, stoney=False):
+def map_color(lab, allowed=None, stoney=False, silver=False):
+    if silver:
+        # silver art: blue-ish metal -> silver ramp, the rest (rock) -> stone ramp
+        k = 'silver' if lab[2] < -3 else 'stone'
+        rl = ramp_lab[k]; return ramp_rgb[k][np.argmin((rl[:,0]-lab[0])**2)]
     hue = np.degrees(np.arctan2(lab[2], lab[1])) % 360; ch = np.hypot(lab[1], lab[2])
     if stoney and ch < 25 and lab[0] > 12:
         rl = ramp_lab['stone']; return ramp_rgb['stone'][np.argmin((rl[:,0]-lab[0])**2)]
@@ -54,7 +59,7 @@ def map_color(lab, allowed=None, stoney=False):
     i = np.argmin(2.0*(rl[:,0]-lab[0])**2 + 0.3*((rl[:,1]-lab[1])**2 + (rl[:,2]-lab[2])**2))
     return ramp_rgb[k][i]
 
-def process(path, out, remap=True, allowed=None, stoney=False):
+def process(path, out, remap=True, allowed=None, stoney=False, silver=False):
     im = Image.open(path).convert('RGBA'); a = np.array(im)
     rgb, al = a[...,:3].astype(float), a[...,3]
     vis = al > 0
@@ -64,7 +69,7 @@ def process(path, out, remap=True, allowed=None, stoney=False):
         # tame over-saturated colors a bit before matching
         ch = np.hypot(labs[:,1], labs[:,2]); f = np.where(ch > 40, (40 + (ch-40)*0.5)/np.maximum(ch,1e-6), 1)
         labs[:,1] *= f; labs[:,2] *= f
-        new = np.array([map_color(l, allowed, stoney) for l in labs])
+        new = np.array([map_color(l, allowed, stoney, silver) for l in labs])
         rgb[vis] = new[inv.ravel()]
     # unify outline: very dark pixels touching transparency
     L = srgb_to_lab(rgb)[...,0]
@@ -82,5 +87,5 @@ for f in sorted(glob.glob(os.path.join(src, 'assets/**/*.png'), recursive=True))
     char = '/characters/' in f
     tiles = '/tiles/' in f
     stoney = any(w in os.path.basename(f) for w in ('node','stone','boulder','rock','pebble','campfire'))
-    process(f, out, remap=not char, stoney=stoney, allowed=['grass','moss','dirt','autumn','cream','stone','bark','red'] if tiles else None)
+    process(f, out, remap=not char, stoney=stoney, silver='silver' in os.path.basename(f), allowed=['grass','moss','dirt','autumn','cream','stone','bark','red'] if tiles else None)
 print('done')

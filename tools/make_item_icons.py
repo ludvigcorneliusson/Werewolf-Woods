@@ -9,21 +9,40 @@ Each source is pixel art blown up ~12-35x. This script:
   3. shrinks it to fit the 52 px HUD slot (icon area ~40 px), picking the most
      common colour in each block so the palette stays the art's own,
   4. writes assets/ui/<name>.png (1 icon px = 1 screen px in the slot).
-Map props in PROP_ART (the copper ore node) only get step 1 -> assets/props/.
+Map props in PROP_ART (the iron ore node) only get step 1 -> assets/props/.
 
-Usage: python3 tools/make_item_icons.py <project dir>
+Usage: python3 tools/make_item_icons.py <project dir> <name> [<name> ...]
+       (names: the keys below, e.g. furnace walls iron_ingot; "all" = everything)
 
-NOTE: the game's art has since been recoloured to the forest palette with
-tools/recolor.py. Re-running this script writes un-recoloured images, so run
-recolor.py on them afterwards (python3 tools/recolor.py <src dir> <out dir>).
+Only the named images are (re)built, and everything written goes through the
+user's tools/recolor.py so it matches the game's forest palette. (Rebuilding
+everything would replace hand-tuned recolours with fresh ones - name only what
+you need.)
 """
+import os
+import shutil
+import subprocess
 import sys
+import tempfile
 from collections import Counter
 
 import numpy as np
 from PIL import Image
 
 P = sys.argv[1] if len(sys.argv) > 1 else '.'
+ONLY = set(sys.argv[2:])
+if not ONLY:
+    sys.exit(__doc__)
+WRITTEN = []                     # project-relative paths of game images written (recoloured at the end)
+
+
+def want(name):
+    return 'all' in ONLY or name in ONLY
+
+
+def save(img, rel):
+    img.save(f'{P}/{rel}')
+    WRITTEN.append(rel)
 
 # name: (source, cell px, [left/right half for the two-shovel sheet], tool rotation
 #        in degrees counter-clockwise (None = keep), longest side of the icon)
@@ -33,18 +52,26 @@ ICONS = {
     'axe':     ('src_axe.png', 12.51, None, -45, 38),
     'pickaxe': ('src_pickaxe.png', 29.6, None, -45, 40),
     'spade':   ('src_spade.png', 31.66, 'right', 135, 40),   # blade up, then tilted: blade top right
-    'copper_ore': ('src_copper_ore.png', 33.0, None, None, 40),  # 36 x 27: already fits, kept 1:1
+    'iron_ore': ('src_iron_ore.png', 33.0, None, None, 40),  # 36 x 27: already fits, kept 1:1
     'stone':   ('src_stone.png', 31.88, None, None, 40),             # 34 x 30, kept 1:1
     'watering_can': ('src_watering_can.png', 28.95, None, None, 40),  # upright (a can reads better than tilted)
+    'iron_ingot': ('src_iron_ingot.png', 25.16, None, None, 40),
+    'silver_ore': ('src_silver_ore.png', 29.68, None, None, 40),
+    'silver_ingot': ('src_silver_ingot.png', 26.08, None, None, 40),
 }
 # Map props from the same kind of source art, kept at native size (1 art px =
 # 1 world px, like the other props): name -> (source, cell px). -> assets/props/<name>.png
 PROP_ART = {
-    'copper_node': ('src_copper_node.png', 26.36),
-    'copper_node_small': ('src_copper_node_small.png', 27.56),   # small deposit
+    'iron_node': ('src_iron_node.png', 26.36),
+    'iron_node_small': ('src_iron_node_small.png', 27.56),   # small deposit
+    'furnace': ('src_furnace.png', 26.52),
+    'silver_node_a': ('src_silver_node_a.png', 25.61),   # cone heap (big)
+    'silver_node_b': ('src_silver_node_b.png', 25.06),   # slab with a vein (small)
+    'silver_node_c': ('src_silver_node_c.png', 27.22),   # tall spike (big)
+    'silver_node_d': ('src_silver_node_d.png', 27.18),   # wide, low (small)
     'stone_node_a': ('src_stone_node_a.png', 25.54),   # wide, low pile
     'stone_node_b': ('src_stone_node_b.png', 25.35),   # tall slab with rubble
-    'stone_node_c': ('src_stone_node_c.png', 26.36),   # round heap (same shape as the copper node)
+    'stone_node_c': ('src_stone_node_c.png', 26.36),   # round heap (same shape as the iron node)
 }
 
 
@@ -162,6 +189,8 @@ def outline_shrink(a, f, cover=0.25):
 
 
 for name, (src, cell, half, rot, longest) in ICONS.items():
+    if not want(name):
+        continue
     a = native(f'{P}/tools/art/{src}', cell)
     if half:
         mid = a.shape[1] // 2
@@ -174,12 +203,14 @@ for name, (src, cell, half, rot, longest) in ICONS.items():
         icon = outline_shrink(a, 0.5)              # thin branch: see outline_shrink
     else:
         icon = shrink(a, longest, unit if rot is not None else 1.0)
-    Image.fromarray(icon, 'RGBA').save(f'{P}/assets/ui/{name}.png')
+    save(Image.fromarray(icon, 'RGBA'), f'assets/ui/{name}.png')
     print(name, 'native', a.shape[1::-1] if rot is None else '', '-> icon', icon.shape[1], 'x', icon.shape[0])
 
 for name, (src, cell) in PROP_ART.items():
+    if not want(name):
+        continue
     a = native(f'{P}/tools/art/{src}', cell)
-    Image.fromarray(a, 'RGBA').save(f'{P}/assets/props/{name}.png')
+    save(Image.fromarray(a, 'RGBA'), f'assets/props/{name}.png')
     print(name, 'prop', a.shape[1], 'x', a.shape[0])
 
 # The old stick and fallen-log map art is replaced by the same new art:
@@ -188,20 +219,65 @@ for name, (src, cell) in PROP_ART.items():
 #   assets/props/log.png   = the log at native size (the fallen logs in the forest)
 #   assets/props/log_drop.png = dropped logs (40 px)
 # (the old images are kept as tools/art/old_stick.png / old_log.png)
-twig = np.asarray(Image.open(f'{P}/tools/art/native_twig.png').convert('RGBA'))
-Image.fromarray(outline_shrink(twig, 0.34, 0.2), 'RGBA').save(f'{P}/assets/props/stick.png')
-log = np.asarray(Image.open(f'{P}/tools/art/native_log.png').convert('RGBA'))
-Image.fromarray(log, 'RGBA').save(f'{P}/assets/props/log.png')
-# Dropped logs: the 40 px icon art at 1:1 (own file name, so nothing mistakes a
-# dropped log for a fallen-log prop).
-Image.open(f'{P}/assets/ui/log.png').save(f'{P}/assets/props/log_drop.png')
-print('map stick', Image.open(f'{P}/assets/props/stick.png').size, 'map log', log.shape[1::-1])
+if want('stick') or want('log'):
+    twig = np.asarray(Image.open(f'{P}/tools/art/native_twig.png').convert('RGBA'))
+    save(Image.fromarray(outline_shrink(twig, 0.34, 0.2), 'RGBA'), 'assets/props/stick.png')
+    log = np.asarray(Image.open(f'{P}/tools/art/native_log.png').convert('RGBA'))
+    save(Image.fromarray(log, 'RGBA'), 'assets/props/log.png')
+    # Dropped logs: the 40 px icon art at 1:1 (own file name, so nothing mistakes a
+    # dropped log for a fallen-log prop).
+    save(Image.open(f'{P}/assets/ui/log.png'), 'assets/props/log_drop.png')
+    print('map stick', Image.open(f'{P}/assets/props/stick.png').size, 'map log', log.shape[1::-1])
 
 # Mouse cursor (scripts/main.gd sets it): native pixels, plus a 2x copy for big
 # screens. The hotspot (the arrow's tip) is printed for main.gd.
-cur = native(f'{P}/tools/art/src_cursor.png', 26.89)
-Image.fromarray(cur, 'RGBA').save(f'{P}/assets/ui/cursor.png')
-Image.fromarray(cur, 'RGBA').resize((cur.shape[1] * 2, cur.shape[0] * 2), Image.NEAREST).save(f'{P}/assets/ui/cursor_2x.png')
-ys, xs = np.nonzero(cur[..., 3] > 0)
-top = ys.min()
-print('cursor', cur.shape[1::-1], 'tip', (int(xs[ys == top].min()), int(top)))
+if want('cursor'):
+    cur = native(f'{P}/tools/art/src_cursor.png', 26.89)
+    save(Image.fromarray(cur, 'RGBA'), 'assets/ui/cursor.png')
+    save(Image.fromarray(cur, 'RGBA').resize((cur.shape[1] * 2, cur.shape[0] * 2), Image.NEAREST), 'assets/ui/cursor_2x.png')
+    ys, xs = np.nonzero(cur[..., 3] > 0)
+    top = ys.min()
+    print('cursor', cur.shape[1::-1], 'tip', (int(xs[ys == top].min()), int(top)))
+
+# Walls: five pieces on one sheet, all on one 16.9 px grid (offset 15.47, 16.4 -
+# measured on the wide pieces; the thin end-on piece alone throws the automatic
+# estimate off). Split on empty columns -> assets/props/wall_<name>.png.
+WALLS = ['front', 'front_plain', 'end', 'diag_up', 'diag_down']
+if want('walls'):
+    sheet = np.asarray(Image.open(f'{P}/tools/art/src_walls.png').convert('RGBA'))
+    s_, ox, oy = 16.9, 15.47, 16.4
+    h_, w_ = sheet.shape[:2]
+    nx, ny = int((w_ - ox) // s_), int((h_ - oy) // s_)
+    cx = (ox + (np.arange(nx) + 0.5) * s_).astype(int)
+    cy = (oy + (np.arange(ny) + 0.5) * s_).astype(int)
+    nat = sheet[cy][:, cx].copy()
+    nat[nat[..., 3] < 128] = 0
+    nat[..., 3][nat[..., 3] >= 128] = 255
+    used = (nat[..., 3] > 0).any(0)
+    runs, x = [], 0
+    while x < len(used):
+        if used[x]:
+            x0 = x
+            while x < len(used) and used[x]:
+                x += 1
+            runs.append((x0, x))
+        x += 1
+    assert len(runs) == len(WALLS), runs
+    for name, (x0, x1) in zip(WALLS, runs):
+        piece = crop(nat[:, x0:x1])
+        save(Image.fromarray(piece, 'RGBA'), f'assets/props/wall_{name}.png')
+        print('wall', name, piece.shape[1], 'x', piece.shape[0])
+
+
+# Everything written goes through the user's palette recolour (tools/recolor.py)
+# so it matches the rest of the game's art.
+if WRITTEN and os.path.exists(f'{P}/tools/recolor.py'):
+    with tempfile.TemporaryDirectory() as tmp:
+        for rel in WRITTEN:
+            os.makedirs(os.path.dirname(f'{tmp}/src/{rel}'), exist_ok=True)
+            shutil.copy(f'{P}/{rel}', f'{tmp}/src/{rel}')
+        subprocess.run([sys.executable, '-I', f'{P}/tools/recolor.py', f'{tmp}/src', f'{tmp}/out'], check=True,
+                       stdout=subprocess.DEVNULL)
+        for rel in WRITTEN:
+            shutil.copy(f'{tmp}/out/{rel}', f'{P}/{rel}')
+    print('recoloured', len(WRITTEN), 'images with tools/recolor.py')

@@ -1,0 +1,31 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/varied_prop.gd" id="1_b1df3"]
+[ext_resource type="Material" path="res://assets/props/ore_material.tres" id="2_cumat"]
+[ext_resource type="Texture2D" path="res://assets/props/iron_node_small.png" id="3_cusml"]
+
+[sub_resource type="OccluderPolygon2D" id="OccluderPolygon2D_cs"]
+polygon = PackedVector2Array(13.0, 0.0, 11.2583, 2.0, 6.5, 3.4641, 0.0, 4.0, -6.5, 3.4641, -11.2583, 2.0, -13.0, 0.0, -11.2583, -2.0, -6.5, -3.4641, -0.0, -4.0, 6.5, -3.4641, 11.2583, -2.0)
+
+[node name="IronNodeSmall" type="Node2D"]
+script = ExtResource("1_b1df3")
+hue_variance = 0.0
+saturation_variance = 0.05
+brightness_variance = 0.06
+
+[node name="Sprite" type="Sprite2D" parent="."]
+light_mask = 2
+material = ExtResource("2_cumat")
+texture = ExtResource("3_cusml")
+centered = false
+offset = Vector2(-20, -26)
+
+[node name="Body" type="StaticBody2D" parent="."]
+
+[node name="Shape" type="CollisionPolygon2D" parent="Body"]
+position = Vector2(-1, -5)
+polygon = PackedVector2Array(15.0, 0.0, 12.9904, 2.5, 7.5, 4.3301, 0.0, 5.0, -7.5, 4.3301, -12.9904, 2.5, -15.0, 0.0, -12.9904, -2.5, -7.5, -4.3301, -0.0, -5.0, 7.5, -4.3301, 12.9904, -2.5)
+
+[node name="VisionBlocker" type="LightOccluder2D" parent="."]
+position = Vector2(-1, -5)
+occluder = SubResource("OccluderPolygon2D_cs")

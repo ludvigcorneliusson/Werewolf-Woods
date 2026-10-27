@@ -87,16 +87,16 @@ extends Node
 @export_range(0.0, 400.0, 1.0, "suffix:px") var campfire_space := 60.0
 
 @export_group("Ore")
-## Single big copper deposits per 1000 x 1000 px. Only in the forest, never
+## Single big iron deposits per 1000 x 1000 px. Only in the forest, never
 ## near the camp clearing.
 @export_range(0.0, 10.0, 0.05) var ore_nodes := 0.5
-## Clusters of copper deposits per 1000 x 1000 px (2-4 big and small ones together).
+## Clusters of iron deposits per 1000 x 1000 px (2-4 big and small ones together).
 @export_range(0.0, 10.0, 0.05) var ore_clusters := 0.3
-## Copper deposits per cluster: min (x) - max (y).
+## Iron deposits per cluster: min (x) - max (y).
 @export var ore_cluster_size := Vector2(2, 4)
-## How far a copper cluster spreads from its middle (px; flattened for the 3/4 view).
+## How far a iron cluster spreads from its middle (px; flattened for the 3/4 view).
 @export_range(40.0, 600.0, 5.0, "suffix:px") var ore_cluster_radius := 100.0
-## Single small copper deposits per 1000 x 1000 px (a bit more common than the big ones).
+## Single small iron deposits per 1000 x 1000 px (a bit more common than the big ones).
 @export_range(0.0, 10.0, 0.05) var small_ore_nodes := 0.6
 ## Share of small deposits placed inside a stone cluster (an ore vein in the rocks).
 @export_range(0.0, 1.0, 0.01) var small_ore_in_stone := 0.35
@@ -104,6 +104,16 @@ extends Node
 @export_range(0.0, 1.0, 0.01) var ore_near_boulders := 0.4
 ## Keep ore this far beyond the clearing's edge (px).
 @export_range(0.0, 2000.0, 10.0, "suffix:px") var ore_clearance := 300.0
+
+@export_group("Silver")
+## Clusters of silver deposits per 1000 x 1000 px (rarer than iron).
+@export_range(0.0, 10.0, 0.05) var silver_clusters := 0.2
+## Silver deposits per cluster: min (x) - max (y).
+@export var silver_cluster_size := Vector2(2, 3)
+## Single silver deposits per 1000 x 1000 px (about half as many as iron).
+@export_range(0.0, 10.0, 0.05) var silver_nodes := 0.55
+## Keep silver this far beyond the clearing's edge (px).
+@export_range(0.0, 3000.0, 10.0, "suffix:px") var silver_clearance := 450.0
 
 @export_group("Stone")
 ## Clusters of stone nodes per 1000 x 1000 px (in the forest, not in the clearing).
@@ -145,8 +155,11 @@ const PROPS_TILESET := "res://assets/props/props_tileset.tres"
 const CAMPFIRE := "res://assets/props/campfire.tscn"
 ## Stone node scenes: [name, chance weight, solid radius used when placing].
 const STONE_NODES := [["stone_node_c", 0.45, 26.0], ["stone_node_a", 0.3, 40.0], ["stone_node_b", 0.25, 34.0]]
-## Copper deposit scenes, same format (clusters mix big and small).
-const COPPER_NODES := [["copper_node", 0.4, 26.0], ["copper_node_small", 0.6, 18.0]]
+## Iron deposit scenes, same format (clusters mix big and small).
+const IRON_NODES := [["iron_node", 0.4, 26.0], ["iron_node_small", 0.6, 18.0]]
+## Silver deposit scenes (four looks, all the same size class).
+const SILVER_NODES := [["silver_node_a", 0.25, 26.0], ["silver_node_b", 0.25, 26.0],
+		["silver_node_c", 0.25, 25.0], ["silver_node_d", 0.25, 31.0]]
 ## Per tree type, in ART pixels: [root half-width, visible trunk height below the
 ## canopy]. Used so trunks never visibly touch. Dead trees show their whole trunk.
 ## How close a tree trunk may stand to the map edge: [sides, top, bottom] (world
@@ -361,7 +374,7 @@ func _place_props(props: TileMapLayer, ground: TileMapLayer) -> int:
 			boulder_spots.append(p)
 			for k in _rng.randi_range(0, 2):       # a few small rocks around some boulders
 				_put("mossy_rock", p + Vector2.from_angle(_rng.randf() * TAU) * Vector2(_rng.randf_range(26, 38), _rng.randf_range(14, 22)), 11.0)
-	# --- Copper ore nodes: rare, in the forest, some leaning on a boulder.
+	# --- Iron ore nodes: rare, in the forest, some leaning on a boulder.
 	var min_r := clearing + clearing_fade + ore_clearance
 	for i in int(ore_nodes * per):
 		for attempt in 10:
@@ -371,7 +384,7 @@ func _place_props(props: TileMapLayer, ground: TileMapLayer) -> int:
 				p = b + Vector2.from_angle(_rng.randf() * TAU) * Vector2(_rng.randf_range(46, 60), _rng.randf_range(20, 28))
 			if p.length() < min_r or not area.has_point(p) or _rng.randf() > _forest(p) + 0.2:
 				continue
-			if _put("copper_node", p, 26.0):
+			if _put("iron_node", p, 26.0):
 				break
 	# Small deposits: some inside stone clusters, the rest in the forest.
 	for i in int(small_ore_nodes * per):
@@ -386,8 +399,10 @@ func _place_props(props: TileMapLayer, ground: TileMapLayer) -> int:
 				continue
 			if not in_stone and _rng.randf() > _forest(p) + 0.2:
 				continue
-			if _put("copper_node_small", p, 18.0):
+			if _put("iron_node_small", p, 18.0):
 				break
+	# Single silver deposits (rarer, a bit further out than iron).
+	_place_singles(area, int(silver_nodes * per), SILVER_NODES, clearing + clearing_fade + silver_clearance)
 	# Single stone nodes through the forest.
 	_place_singles(area, int(stone_singles * per), STONE_NODES, clearing + clearing_fade + stone_clearance)
 	for i in int(logs * per):
@@ -497,12 +512,18 @@ func _place_stone_clusters(area: Rect2) -> void:
 		for k in _rng.randi_range(int(stone_cluster_pebbles.x), int(maxf(stone_cluster_pebbles.y, stone_cluster_pebbles.x))):
 			var d := _rng.randf_range(0.2, 1.2) * stone_cluster_radius
 			_put("pebble", c + Vector2.from_angle(_rng.randf() * TAU) * Vector2(d, d * 0.6), 0.0)
-	# Copper clusters (big and small deposits together), also before the trees.
+	# Iron clusters (big and small deposits together), also before the trees.
 	var ore_min := clearing + clearing_fade + ore_clearance
 	for i in int(ore_clusters * area.get_area() / 1_000_000.0):
 		var c := _cluster_centre(area, ore_cluster_radius, ore_min)
 		if c != Vector2.INF:
-			_place_cluster(area, c, COPPER_NODES, ore_cluster_size, ore_cluster_radius)
+			_place_cluster(area, c, IRON_NODES, ore_cluster_size, ore_cluster_radius)
+	# Silver clusters.
+	var silver_min := clearing + clearing_fade + silver_clearance
+	for i in int(silver_clusters * area.get_area() / 1_000_000.0):
+		var c := _cluster_centre(area, ore_cluster_radius, silver_min)
+		if c != Vector2.INF:
+			_place_cluster(area, c, SILVER_NODES, silver_cluster_size, ore_cluster_radius)
 
 
 ## A forest spot for a cluster's middle (at least min_r from the map centre), or INF.

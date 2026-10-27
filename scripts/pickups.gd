@@ -48,7 +48,8 @@ func try_pick() -> void:
 		return
 	if _target.is_in_group("interactables"):
 		var what: String = _target.call("interact")
-		hud.note(what, _target.global_position + Vector2(0, -float(_target.get("prompt_height")) - 16))
+		if what != "":
+			hud.note(what, _target.global_position + Vector2(0, -float(_target.get("prompt_height")) - 16))
 		return
 	var id := _item_of(_target)
 	if id == "":
@@ -81,7 +82,8 @@ func spawn_drop(id: String, at: Vector2, from: Variant = null) -> Node2D:
 	s.offset = Vector2(-floorf(sz.x / 2.0), -sz.y + 2)
 	s.material = VARIED_MATERIAL                     # darkened at night like the props
 	if item.get("gleam", false):
-		s.material = preload("res://assets/props/copper_material.tres")   # ore glints
+		s.material = preload("res://assets/props/silver_material.tres") if id.begins_with("silver") \
+				else preload("res://assets/props/ore_material.tres")   # ore glints
 	s.self_modulate = Color(0.5, 0.5, 0.5, 0.5)       # = no colour change, no sway
 	s.flip_h = randf() < 0.5
 	n.add_child(s)

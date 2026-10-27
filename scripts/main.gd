@@ -29,6 +29,7 @@ const Upgrades := preload("res://scripts/upgrades.gd")
 const BuildMenu := preload("res://scripts/build_menu.gd")
 const Buildables := preload("res://scripts/buildables.gd")
 const Placer := preload("res://scripts/placer.gd")
+const FurnacePanel := preload("res://scripts/furnace_panel.gd")
 ## Shared by every prop scene; we feed it the player position so trees fade
 ## when the player walks behind them.
 const PROP_MATERIAL := preload("res://assets/props/prop_material.tres")
@@ -37,7 +38,8 @@ const VARIED_MATERIAL := preload("res://assets/props/varied_material.tres")
 ## Ore nodes: the same shader with the gleam on. Every other setting is copied
 ## from VARIED_MATERIAL each frame (_sync_ore_material), so they get the same
 ## light, darkness, fade and wind.
-const COPPER_MATERIAL := preload("res://assets/props/copper_material.tres")
+const ORE_MATERIAL := preload("res://assets/props/ore_material.tres")
+const SILVER_MATERIAL := preload("res://assets/props/silver_material.tres")
 
 ## false = use the hand-painted World node in main.tscn (default).
 ## true  = use the old procedural generator (R makes a new random map).
@@ -488,7 +490,7 @@ var _chopping: Node
 
 # --- Mining -------------------------------------------------------------------
 # With the pickaxe (tool 3), left click mines ore and stone nodes: the same hit
-# mechanic as trees. A copper node crumbles after Ore Hits and drops copper ore,
+# mechanic as trees. A iron node crumbles after Ore Hits and drops iron ore,
 # a stone node after Stone Hits and drops stone. Where they spawn: WorldBuilder >
 # Ore / Stone.
 @export_group("Mining")
@@ -497,7 +499,7 @@ var _chopping: Node
 	set(v):
 		ore_hits = v
 		_apply_mining()
-## Pickaxe hits to break a small copper deposit.
+## Pickaxe hits to break a small iron deposit.
 @export_range(1, 30, 1) var small_ore_hits := 3:
 	set(v):
 		small_ore_hits = v
@@ -618,7 +620,7 @@ var _night_eyes: Node
 @export_range(0, 100, 1) var xp_stump := 1
 ## XP for breaking an ore node.
 @export_range(0, 100, 1) var xp_ore := 3
-## XP for breaking a small copper deposit.
+## XP for breaking a small iron deposit.
 @export_range(0, 100, 1) var xp_small_ore := 2
 ## XP for breaking a stone node.
 @export_range(0, 100, 1) var xp_stone := 1
@@ -628,6 +630,7 @@ var _xp: Node
 var _level_up: CanvasLayer
 var _build_menu: CanvasLayer
 var _placer: Node2D
+var _furnace_panel: CanvasLayer
 var upgrade_levels := {}            # upgrade id -> cards taken (counts towards its max level)
 var upgrade_power := {}             # upgrade id -> summed effect (common 1, rare 2, epic 3 ...)
 var _offered := {}                  # upgrade id -> rarity of the card on screen
@@ -893,7 +896,8 @@ func _sync_ore_material() -> void:
 			if not n.begins_with("gleam"):
 				_shared_uniforms.append(n)
 	for n in _shared_uniforms:
-		COPPER_MATERIAL.set_shader_parameter(n, VARIED_MATERIAL.get_shader_parameter(n))
+		ORE_MATERIAL.set_shader_parameter(n, VARIED_MATERIAL.get_shader_parameter(n))
+		SILVER_MATERIAL.set_shader_parameter(n, VARIED_MATERIAL.get_shader_parameter(n))
 
 
 ## The game's own pixel-art mouse arrow (assets/ui/cursor.png, made by
@@ -1134,6 +1138,12 @@ func _setup_survival() -> void:
 		player.set("build_mode", true)
 		player.set("_chop_held", false)
 		_placer.start(id))
+	# Furnaces: E at one opens this panel.
+	_furnace_panel = FurnacePanel.new()
+	_furnace_panel.inventory = _inventory
+	_furnace_panel.hud = _game_hud
+	_furnace_panel.player = player
+	add_child(_furnace_panel)
 
 
 ## A fire or torch was put out / lit (E): redraw the night darkness.
@@ -1593,6 +1603,8 @@ func _become_werewolf() -> void:
 		_placer.player = null
 	if _build_menu:
 		_build_menu.close()
+	if _furnace_panel:
+		_furnace_panel.close()
 	if _chopping:
 		_chopping.player = wolf
 	if _mining:
@@ -1861,6 +1873,7 @@ func _setup_input() -> void:
 		"sprint": [KEY_SHIFT],
 		"sneak": [KEY_CTRL],
 		"regenerate": [KEY_R],
+		"rotate": [KEY_R],                # turns walls while placing them
 		"god_mode": [KEY_F],
 		"skip_time": [KEY_N],
 		"toggle_rain": [KEY_T],

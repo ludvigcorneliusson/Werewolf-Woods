@@ -125,12 +125,10 @@ const MINE_PLACEHOLDER := {"windup": 0.3, "strike": 0.07, "recover": 0.28, "back
 ## Tools that swing on left click.
 const SWING_TOOLS := ["axe", "pickaxe", "spade", "watering_can"]
 
-## Default footsteps: soft grass steps, three takes played in turn so walking
-## doesn't sound like one sample on repeat (tools/make_sounds.py). The werewolf
-## sets its own (werewolf.gd).
-const STEP_SOUNDS := ["res://assets/sounds/footsteps/grass_soft_1.wav",
-		"res://assets/sounds/footsteps/grass_soft_2.wav", "res://assets/sounds/footsteps/grass_soft_3.wav"]
-const STEP_SOUND := "res://assets/sounds/footsteps/grass_soft_1.wav"   # first take (kept for older code)
+## Footstep sounds: none for now (the synthesized grass steps were removed).
+## The step system below still runs in sync with the run animation: list sound
+## files here (played in turn) to bring footsteps back. werewolf.gd sets its own.
+const STEP_SOUNDS := []
 ## Whoosh per swinging tool (tools/make_sounds.py), heard as the tool comes down.
 const SWING_SOUNDS := {"axe": "res://assets/sounds/swing_axe.wav", "pickaxe": "res://assets/sounds/swing_pickaxe.wav",
 		"spade": "res://assets/sounds/swing_spade.wav", "watering_can": "res://assets/sounds/swing_can.wav"}
@@ -460,7 +458,7 @@ func _setup_footsteps() -> void:
 
 
 ## Changes the footstep sound, also while the game runs (e.g. a different sound
-## per ground type). null = back to the default STEP_SOUND. Takes effect from
+## per ground type). null = back to the first of step_takes (if any). Takes effect from
 ## the next step; a step that is already playing finishes first.
 func set_step_sound(stream: AudioStream) -> void:
 	_custom_step = stream != null

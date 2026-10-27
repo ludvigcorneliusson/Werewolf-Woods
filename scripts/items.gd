@@ -5,7 +5,7 @@ extends RefCounted
 ##
 ## "prop" = the map prop image that can be picked up as this item (pebbles and
 ## sticks already lying in the forest). "world_scale" = size on the ground.
-## "gleam" = glints on the ground like the ore nodes (copper_material.tres).
+## "gleam" = glints on the ground like the ore nodes (ore_material.tres).
 
 const ITEMS := {
 	# Tools (tools bar, keys 1-4). Icons: tools/make_item_icons.py. Spade and
@@ -21,8 +21,14 @@ const ITEMS := {
 			"world": preload("res://assets/ui/stone.png"), "world_scale": 0.5, "prop": "pebble.png"},
 	"twig": {"name": "Twig", "icon": preload("res://assets/ui/twig.png"), "stack": 20,
 			"world": preload("res://assets/props/stick.png"), "world_scale": 1.0, "prop": "stick.png"},
-	"copper_ore": {"name": "Copper Ore", "icon": preload("res://assets/ui/copper_ore.png"), "stack": 20,
-			"world": preload("res://assets/ui/copper_ore.png"), "world_scale": 0.5, "gleam": true},
+	"iron_ore": {"name": "Iron Ore", "icon": preload("res://assets/ui/iron_ore.png"), "stack": 20,
+			"world": preload("res://assets/ui/iron_ore.png"), "world_scale": 0.5, "gleam": true},
+	"silver_ore": {"name": "Silver Ore", "icon": preload("res://assets/ui/silver_ore.png"), "stack": 20,
+			"world": preload("res://assets/ui/silver_ore.png"), "world_scale": 0.5, "gleam": true},
+	"silver_ingot": {"name": "Silver Ingot", "icon": preload("res://assets/ui/silver_ingot.png"), "stack": 20,
+			"world": preload("res://assets/ui/silver_ingot.png"), "world_scale": 0.5},
+	"iron_ingot": {"name": "Iron Ingot", "icon": preload("res://assets/ui/iron_ingot.png"), "stack": 20,
+			"world": preload("res://assets/ui/iron_ingot.png"), "world_scale": 0.5},
 	"log": {"name": "Log", "icon": preload("res://assets/ui/log.png"), "stack": 10,
 			"world": preload("res://assets/props/log_drop.png"), "world_scale": 1.0},
 }

@@ -59,8 +59,8 @@ func _init() -> void:
 	body_radius = 10.0
 	shadow_radius = 17.0
 	see_through_size = Vector2(19, 38)
-	# Its own heavy paw step, louder and carrying further (you hear it before you see it).
-	step_takes = ["res://assets/sounds/footsteps/werewolf_step.wav"]
+	# No footstep sound for now (removed). Add a file here for a heavy paw step.
+	step_takes = []
 	step_volume_db = -3.0
 	step_hear_distance = 900.0
 
