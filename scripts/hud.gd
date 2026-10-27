@@ -14,7 +14,7 @@ const BORDER := Color(0.32, 0.36, 0.30)
 const SLOT := 52                     # slot size, screen px
 
 var inventory: Node                  # scripts/inventory.gd
-var tools: Array[String] = ["axe", "spade", "pickaxe", ""]
+var tools: Array[String] = ["axe", "spade", "pickaxe", "watering_can"]
 var selected_tool := 0
 
 var _health_box: PanelContainer

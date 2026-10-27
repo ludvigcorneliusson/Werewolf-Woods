@@ -31,6 +31,7 @@ ICONS = {
     'spade':   ('src_spade.png', 31.66, 'right', 135, 40),   # blade up, then tilted: blade top right
     'copper_ore': ('src_copper_ore.png', 33.0, None, None, 40),  # 36 x 27: already fits, kept 1:1
     'stone':   ('src_stone.png', 31.88, None, None, 40),             # 34 x 30, kept 1:1
+    'watering_can': ('src_watering_can.png', 28.95, None, None, 40),  # upright (a can reads better than tilted)
 }
 # Map props from the same kind of source art, kept at native size (1 art px =
 # 1 world px, like the other props): name -> (source, cell px). -> assets/props/<name>.png
@@ -191,3 +192,12 @@ Image.fromarray(log, 'RGBA').save(f'{P}/assets/props/log.png')
 # dropped log for a fallen-log prop).
 Image.open(f'{P}/assets/ui/log.png').save(f'{P}/assets/props/log_drop.png')
 print('map stick', Image.open(f'{P}/assets/props/stick.png').size, 'map log', log.shape[1::-1])
+
+# Mouse cursor (scripts/main.gd sets it): native pixels, plus a 2x copy for big
+# screens. The hotspot (the arrow's tip) is printed for main.gd.
+cur = native(f'{P}/tools/art/src_cursor.png', 26.89)
+Image.fromarray(cur, 'RGBA').save(f'{P}/assets/ui/cursor.png')
+Image.fromarray(cur, 'RGBA').resize((cur.shape[1] * 2, cur.shape[0] * 2), Image.NEAREST).save(f'{P}/assets/ui/cursor_2x.png')
+ys, xs = np.nonzero(cur[..., 3] > 0)
+top = ys.min()
+print('cursor', cur.shape[1::-1], 'tip', (int(xs[ys == top].min()), int(top)))

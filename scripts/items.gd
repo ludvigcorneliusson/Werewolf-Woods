@@ -13,6 +13,8 @@ const ITEMS := {
 	"axe": {"name": "Axe", "icon": preload("res://assets/ui/axe.png"), "tool": true},
 	"spade": {"name": "Spade", "icon": preload("res://assets/ui/spade.png"), "tool": true},
 	"pickaxe": {"name": "Pickaxe", "icon": preload("res://assets/ui/pickaxe.png"), "tool": true},
+	# Watering can: never runs out for now ("water" capacity can come later).
+	"watering_can": {"name": "Watering Can", "icon": preload("res://assets/ui/watering_can.png"), "tool": true},
 	# Stone: from pebbles on the ground ("prop") and from mined stone nodes.
 	# Dropped stones show the stone chunk art, shrunk.
 	"stone": {"name": "Stone", "icon": preload("res://assets/ui/stone.png"), "stack": 20,

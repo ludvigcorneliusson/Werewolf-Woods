@@ -88,13 +88,28 @@ const DIG := {
 		"durations": {0: 0.5, 1: 2.0, 2: 2.0, 3: 2.5, 4: 2.0, 5: 2.0, 6: 2.0, 7: 2.0, 8: 2.0,
 			9: 4.0, 10: 2.0, 11: 2.0, 12: 2.0, 13: 3.0, 14: 2.0, 15: 2.0, 16: 2.0, 17: 2.0}},
 }
+## Watering (left click with the watering can), from ClipProj_H3_00029 via
+## tools/chop_from_video.py (side water_right): lift the can, tilt, pour (frames
+## 5-9; the water itself is particles from main.gd), lower it. Facing left
+## plays it mirrored. "pour" = how long the pour lasts in frames from "impact".
+const WATER := {
+	"right": {"tex": preload("res://assets/characters/settler_water_right.png"), "frames": 14,
+		"size": Vector2i(46, 46), "offset": Vector2(-15, -45), "fps": 30.0, "impact": 5,
+		"durations": {0: 0.5, 1: 2.0, 2: 2.0, 3: 2.0, 4: 2.0, 5: 4.0, 6: 4.0, 7: 4.0, 8: 4.0, 9: 3.0,
+			10: 2.0, 11: 2.0, 12: 2.0, 13: 2.0}},
+}
+## Where the spout tip is while pouring (world px from the feet, facing right).
+const SPOUT := Vector2(29, -11)
+## The can starts pouring: from = the spout, seconds = how long it pours.
+signal water_pour(from: Vector2, side: int, seconds: float)
+
 ## The spade digs (at the dig frame): point = where the blade goes in.
 signal dig_hit(point: Vector2, side: int)
 
 ## Placeholder swing timing (seconds) and lean (radians, around the feet).
 const MINE_PLACEHOLDER := {"windup": 0.3, "strike": 0.07, "recover": 0.28, "back": 0.16, "forward": 0.12}
 ## Tools that swing on left click.
-const SWING_TOOLS := ["axe", "pickaxe", "spade"]
+const SWING_TOOLS := ["axe", "pickaxe", "spade", "watering_can"]
 
 const STEP_SOUND := "res://assets/sounds/footsteps/grass_step.wav"   # default footstep
 const DEFAULT_STEPS := [0.0, 0.5]
@@ -150,7 +165,7 @@ var _speed := 0.0
 var chop_speed := 1.0
 var chopping := false
 ## Tool in hand (the tools bar in hud.gd sets it). Left click swings the axe
-## (chop), the pickaxe (mine) or the spade (dig).
+## (chop), the pickaxe (mine), the spade (dig) or the watering can (water).
 var held_tool := "axe"
 ## Pickaxe swing speed (1 = as built).
 var mine_speed := 1.0
@@ -277,9 +292,11 @@ func _start_chop() -> void:
 	chopping = true
 	_moving = false
 	_swing_tool = held_tool
-	if held_tool == "spade":
-		var own_left := _side < 0 and DIG.has("left")
-		sprite.play("dig_left" if own_left else "dig_right")
+	if held_tool == "spade" or held_tool == "watering_can":
+		var table: Dictionary = DIG if held_tool == "spade" else WATER
+		var prefix := "dig_" if held_tool == "spade" else "water_"
+		var own_left := _side < 0 and table.has("left")
+		sprite.play(prefix + ("left" if own_left else "right"))
 		sprite.flip_h = _side < 0 and not own_left
 		sprite.speed_scale = mine_speed
 		sprite.frame = 0
@@ -324,6 +341,13 @@ func _emit_hit() -> void:
 		mine_hit.emit(point, _side)
 	elif _swing_tool == "spade":
 		dig_hit.emit(global_position + Vector2(13.0 * _side, 1.0), _side)
+	elif _swing_tool == "watering_can":
+		var w: Dictionary = WATER.right
+		var frames := 0.0
+		for f in range(w.impact, w.impact + 5):
+			frames += float(w.durations.get(f, 1.0))
+		water_pour.emit(global_position + Vector2(SPOUT.x * _side, SPOUT.y), _side,
+				frames / w.fps / maxf(mine_speed, 0.05))
 	else:
 		chop_hit.emit(point, _side)
 
@@ -339,15 +363,16 @@ func _on_frame_changed() -> void:
 	if not chopping:
 		return
 	var anim := String(sprite.animation)
-	for prefix in ["chop_", "mine_", "dig_"]:
+	for prefix in ["chop_", "mine_", "dig_", "water_"]:
 		if anim.begins_with(prefix):
-			var table: Dictionary = {"chop_": CHOP, "mine_": MINE, "dig_": DIG}[prefix]
+			var table: Dictionary = {"chop_": CHOP, "mine_": MINE, "dig_": DIG, "water_": WATER}[prefix]
 			if sprite.frame == table[anim.trim_prefix(prefix)].impact:
 				_emit_hit()
 
 
 func _on_animation_finished() -> void:
-	if sprite.animation.begins_with("chop_") or sprite.animation.begins_with("mine_") or sprite.animation.begins_with("dig_"):
+	if sprite.animation.begins_with("chop_") or sprite.animation.begins_with("mine_") \
+			or sprite.animation.begins_with("dig_") or sprite.animation.begins_with("water_"):
 		_end_swing()
 
 
@@ -511,6 +536,8 @@ func _build_frames() -> SpriteFrames:
 		swings.append(["mine_" + side, MINE[side]])
 	for side: String in DIG:
 		swings.append(["dig_" + side, DIG[side]])
+	for side: String in WATER:
+		swings.append(["water_" + side, WATER[side]])
 	for sw in swings:
 		var c: Dictionary = sw[1]
 		var anim: String = sw[0]

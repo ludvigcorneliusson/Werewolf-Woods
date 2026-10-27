@@ -757,6 +757,9 @@ var _plant_push: Node
 
 func _ready() -> void:
 	_setup_input()
+	_apply_cursor()
+	if not get_viewport().size_changed.is_connected(_apply_cursor):
+		get_viewport().size_changed.connect(_apply_cursor)
 	GameSettings.load_settings()
 	GameSettings.apply_display(get_window())
 	GameSettings.apply_volume()
@@ -815,6 +818,8 @@ func _ready() -> void:
 	_mining.node_broken.connect(_on_node_broken)
 	if player.has_signal("dig_hit"):
 		player.connect("dig_hit", _on_dig_hit)
+	if player.has_signal("water_pour"):
+		player.connect("water_pour", _on_water_pour)
 	_apply_mining()
 	_setup_survival()
 	_footprints = Footprints.new()
@@ -887,6 +892,15 @@ func _sync_ore_material() -> void:
 				_shared_uniforms.append(n)
 	for n in _shared_uniforms:
 		COPPER_MATERIAL.set_shader_parameter(n, VARIED_MATERIAL.get_shader_parameter(n))
+
+
+## The game's own pixel-art mouse arrow (assets/ui/cursor.png, made by
+## tools/make_item_icons.py). On big screens (1440 px tall and up) the 2x copy,
+## so it stays about the size of a normal arrow.
+func _apply_cursor() -> void:
+	var big := DisplayServer.window_get_size().y >= 1440
+	var tex: Texture2D = load("res://assets/ui/cursor_2x.png" if big else "res://assets/ui/cursor.png")
+	Input.set_custom_mouse_cursor(tex, Input.CURSOR_ARROW, Vector2(1, 1) * (2 if big else 1))
 
 
 ## Pushes the Wind settings to the shared prop shader.
@@ -1196,6 +1210,47 @@ func _on_dig_hit(point: Vector2, side: int) -> void:
 	p.global_position = point
 	p.emitting = true
 	get_tree().create_timer(0.9, false).timeout.connect(p.queue_free)
+
+
+## The watering can pours (it never runs out for now): a thin stream of drops
+## from the spout to the ground and a little splash where it lands.
+func _on_water_pour(from: Vector2, side: int, seconds: float) -> void:
+	var drops := CPUParticles2D.new()
+	drops.amount = 22
+	drops.lifetime = 0.28
+	drops.direction = Vector2(side * 0.6, 1.0).normalized()
+	drops.spread = 8.0
+	drops.initial_velocity_min = 25.0
+	drops.initial_velocity_max = 40.0
+	drops.gravity = Vector2(0, 260)
+	drops.emission_shape = CPUParticles2D.EMISSION_SHAPE_RECTANGLE
+	drops.emission_rect_extents = Vector2(1.5, 0.5)
+	drops.scale_amount_min = 1.0
+	drops.scale_amount_max = 1.0
+	drops.color = Color(0.68, 0.84, 1.0, 0.85)
+	drops.z_index = 1
+	world.add_child(drops)
+	drops.global_position = from
+	var splash := CPUParticles2D.new()
+	splash.amount = 10
+	splash.lifetime = 0.3
+	splash.direction = Vector2.UP
+	splash.spread = 70.0
+	splash.initial_velocity_min = 12.0
+	splash.initial_velocity_max = 28.0
+	splash.gravity = Vector2(0, 200)
+	splash.color = Color(0.72, 0.86, 1.0, 0.7)
+	splash.z_index = 1
+	world.add_child(splash)
+	splash.global_position = from + Vector2(side * 6.0, 12.0)          # where the stream lands
+	get_tree().create_timer(seconds, false).timeout.connect(func():
+		for p in [drops, splash]:
+			if is_instance_valid(p):
+				p.emitting = false
+		get_tree().create_timer(0.5, false).timeout.connect(func():
+			for p in [drops, splash]:
+				if is_instance_valid(p):
+					p.queue_free()))
 
 
 func _apply_night_eyes() -> void:

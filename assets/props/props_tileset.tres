@@ -19,7 +19,6 @@
 [ext_resource type="PackedScene" path="res://assets/props/boulder.tscn" id="17_tpssq"]
 [ext_resource type="PackedScene" path="res://assets/props/mossy_rock.tscn" id="18_dukac"]
 [ext_resource type="PackedScene" uid="uid://c3aele1vxt4ja" path="res://assets/props/fern_a.tscn" id="19_sf0lx"]
-
 [ext_resource type="PackedScene" path="res://assets/props/pine_tall_stump.tscn" id="20_ptstump"]
 [ext_resource type="PackedScene" path="res://assets/props/copper_node.tscn" id="21_cunode"]
 [ext_resource type="PackedScene" path="res://assets/props/stone_node_a.tscn" id="22_stna"]

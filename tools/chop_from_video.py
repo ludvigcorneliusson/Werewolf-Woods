@@ -4,7 +4,8 @@ Used for assets/characters/settler_chop_right.png (ClipProj_H3_00013),
 settler_chop_left.png (ClipProj_H3_00005) and the pickaxe swing
 settler_mine_right.png (ClipProj_H3_00021, side "mine_right") and
 settler_mine_left.png (ClipProj_H3_00023, side "mine_left"), and the spade dig
-settler_dig_right.png (ClipProj_H3_00025, side "dig_right").
+settler_dig_right.png (ClipProj_H3_00025, side "dig_right"), and watering
+settler_water_right.png (ClipProj_H3_00029, side "water_right").
 Usage, from any folder:
   1. Extract every frame of the video into <work>/frames:
        ffmpeg -i chop.mp4 <work>/frames/f_%03d.png
@@ -55,6 +56,11 @@ VIDEOS = {
     # mirrored for facing left.
     'dig_right': {'frames': [1, 3, 4, 6, 10, 12, 15, 16, 18, 19, 21, 23, 25, 27, 31, 33, 35, 37],
                   'impact': 19, 'out': 'settler_dig_right.png'},
+    # ClipProj_H3_00029 (watering can, facing right): lift the can, tilt, pour
+    # (frames 19-28; the stream itself is drawn by the game as particles, the
+    # video's faint water is keyed out), lower it. Mirrored for facing left.
+    'water_right': {'frames': [1, 7, 9, 11, 17, 19, 21, 23, 25, 27, 29, 31, 33, 35],
+                    'impact': 19, 'out': 'settler_water_right.png'},
 }
 FRAMES = VIDEOS[SIDE]['frames']
 REF = VIDEOS[SIDE].get('ref', FRAMES[0])
