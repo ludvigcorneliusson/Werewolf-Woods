@@ -7,3 +7,4 @@ shader = ExtResource("1_ifv1f")
 shader_parameter/player_pos = null
 shader_parameter/fade_radius = null
 shader_parameter/faded_alpha = null
+shader_parameter/color_variance = null

@@ -31,23 +31,26 @@ Don't Starve-style 3/4 camera. All art is drawn in code (no image assets yet).
   howl that reveals nearest settler, faster movement, map-wide pings late game.
 - Caught settlers: out, spectate, rescuable, or become wolves?
 - Settler goal/score: survival time ranking, reaching dawn, or other?
-- Campfire idea: light/warmth vs. revealing your position.
+- Campfire: there is now one in the central clearing (light + particles). Its light is visible from afar in the dark: light/warmth vs. revealing your position.
 
 ## Current state (prototype)
-- Hand-painted World in main.tscn: grass Ground layer (30x30 tiles), Props layer with a seeded starter forest around a central clearing, Spawn marker.
+- Hand-painted World in main.tscn: grass Ground layer (30x30 tiles), Props layer with a seeded pine-only forest around a central clearing, a Campfire at the centre (0,0), Spawn marker just south of it.
 - Props (trees, pine, bush, stump, rock) are scenes with trunk collision, a vision blocker (trees/bush), and fade when the player is behind them. Paintable via the Props TileMapLayer (scene tiles, 16 px grid).
-- Settler: AnimatedSprite2D built in code — idle stills + H3 run cycles (up/down/right, left mirrored), WASD, Shift sprint with stamina. Every run cycle is given its own `cycle` time in player.gd `RUN` (0.5 s by default) at walk speed and plays faster when sprinting.
-- Fog of war via the player's vision light; invisible walls + camera limits follow the painted ground.
+- Settler: AnimatedSprite2D built in code — idle stills + H3 run cycles (up/down/right, left mirrored), WASD, Shift sprint (unlimited, no stamina). Every run cycle is given its own `cycle` time in player.gd `RUN` (0.5 s by default) at walk speed and plays faster when sprinting.
+- Fog of war via the player's vision light, fading to completely black. Tunables in the Inspector on the Main node (Fog group): fog_color, fog_darkness, vision_radius, fog_start, fog_density, vision_brightness, vision_tint, vision_squash, shadow_softness (also live-editable while running). Invisible walls + camera limits follow the painted ground.
+- Pines: 2.7–3.9x the original art (≈270–390 px, 6–9x the settler), each with its own size, hue/saturation/brightness and mirroring picked from its map position (scripts/pine.gd, tunables on the root of pine.tscn). Colour shift is done in prop_fade.gdshader via pine_material.tres.
+- Campfire: CPUParticles2D Fire/Core/Embers/Smoke + flickering PointLight2D that casts trunk shadows (scripts/campfire.gd: light_radius, light_energy, flicker_*).
 - Debug: F toggle fog, mouse wheel zoom. Old procedural map still available (Main > Use Generated Map), but it uses the old code-drawn art.
 
 ## Files
 - `main.tscn` — Main > World (y-sorted): Ground (TileMapLayer, grass), Props (TileMapLayer, scene tiles), Spawn (Marker2D).
 - `assets/characters/` — settler_up/down/right.png (idle), settler_run_up/down/right.png (horizontal run strips; frame sizes/offsets in player.gd `RUN`).
-- `assets/props/` — prop PNGs + one .tscn per prop, props_tileset.tres, prop_material.tres + prop_fade.gdshader (shared fade).
+- `assets/props/` — prop PNGs + one .tscn per prop, props_tileset.tres, prop_material.tres + pine_material.tres + prop_fade.gdshader (shared fade, pine colour variance), campfire.png/.tscn.
 - `assets/tiles/` — grass.png + ground_tileset.tres.
-- `tools/build_world.gd` — rebuilds prop scenes, tilesets and the World (OVERWRITES painted World). Prop collision/vision sizes are in its PROPS table.
-- `scripts/main.gd` — entry point: darkness, player, world setup, borders, HUD, input.
-- `scripts/player.gd` — settler movement, sprite direction, vision light, camera. Tunables: `WALK_SPEED`, `SPRINT_SPEED`, `STAMINA_*`, `RUN[...].cycle` (per-direction run speed).
+- `tools/build_world.gd` — rebuilds prop scenes, tilesets and the World (OVERWRITES painted World). Prop collision/vision sizes are in its PROPS table; forest density in TREE_SPACING / TREE_JITTER / FOREST_FILL / CLEARING.
+- `tools/build_campfire.gd` — makes campfire.tscn once (OVERWRITES particle tweaks if re-run).
+- `scripts/main.gd` — entry point: fog settings + darkness, player, world setup, borders, HUD, input.
+- `scripts/player.gd` — settler movement, sprite direction, vision light, camera. Tunables: `WALK_SPEED`, `SPRINT_SPEED`, `RUN[...].cycle` (per-direction run speed).
 - `scripts/map_generator.gd`, `scripts/prop.gd`, `scripts/map_preview.gd` — old procedural map (optional).
 
 ## Roadmap

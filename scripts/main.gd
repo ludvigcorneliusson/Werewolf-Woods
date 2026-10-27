@@ -7,32 +7,90 @@ const Player := preload("res://scripts/player.gd")
 ## Shared by every prop scene; we feed it the player position so trees fade
 ## when the player walks behind them.
 const PROP_MATERIAL := preload("res://assets/props/prop_material.tres")
+## Same fade, plus per-tree colour variation (see scripts/pine.gd).
+const PINE_MATERIAL := preload("res://assets/props/pine_material.tres")
+const VISION_TEX_SIZE := 512
 
 ## false = use the hand-painted World node in main.tscn (default).
 ## true  = use the old procedural generator (R makes a new random map).
 @export var use_generated_map := false
 
+# --- Fog of war ---------------------------------------------------------------
+# Select the Main node to tweak these in the Inspector. They also update live
+# while the game runs (Remote scene tree -> Main), so you can tune by eye.
+@export_group("Fog")
+## Start with the fog on (F toggles it in game).
+@export var fog_enabled := true:
+	set(v):
+		fog_enabled = v
+		_apply_fog()
+## Colour of total darkness outside your vision.
+@export var fog_color := Color.BLACK:
+	set(v):
+		fog_color = v
+		_apply_fog()
+## How dark the fog gets at its thickest. 1 = completely fog_color (black), 0 = no darkness.
+@export_range(0.0, 1.0, 0.01) var fog_darkness := 1.0:
+	set(v):
+		fog_darkness = v
+		_apply_fog()
+## How far you can see, in world pixels (the settler is 43 px tall). Beyond this it is fully dark.
+@export_range(40.0, 800.0, 1.0, "suffix:px") var vision_radius := 175.0:
+	set(v):
+		vision_radius = v
+		_apply_fog()
+## Where the fade to black begins, as a fraction of vision_radius. 0 = darkens right from your feet, 0.9 = clear until a hard edge.
+@export_range(0.0, 0.95, 0.01) var fog_start := 0.3:
+	set(v):
+		fog_start = v
+		_apply_fog()
+## Fog thickness: how quickly it goes dark once it starts. 1 = even fade, higher = thicker (darkens sooner), lower = thinner.
+@export_range(0.2, 6.0, 0.05) var fog_density := 1.5:
+	set(v):
+		fog_density = v
+		_apply_fog()
+## Brightness of what you can see.
+@export_range(0.0, 3.0, 0.05) var vision_brightness := 1.1:
+	set(v):
+		vision_brightness = v
+		_apply_fog()
+## Tint of your vision (slightly cold moonlight by default).
+@export var vision_tint := Color(0.9, 0.95, 1.0):
+	set(v):
+		vision_tint = v
+		_apply_fog()
+## Height / width of the vision area. Below 1 makes it look round on the tilted 3/4 ground.
+@export_range(0.3, 1.0, 0.01) var vision_squash := 0.78:
+	set(v):
+		vision_squash = v
+		_apply_fog()
+## Blur on the line-of-sight shadows behind trunks.
+@export_range(0.0, 10.0, 0.1) var shadow_softness := 2.0:
+	set(v):
+		shadow_softness = v
+		_apply_fog()
+@export_group("")
+
 var map: Node2D
 var world: Node2D
 var player: CharacterBody2D
 var darkness: CanvasModulate
-var fog_enabled := true
 var seed_value := 0
 
 var _hud_label: Label
-var _stamina_bar: ProgressBar
+var _vision_tex: GradientTexture2D
 
 
 func _ready() -> void:
 	_setup_input()
 
-	# Night: everything outside a light source is tinted almost black.
+	# Night: everything outside a light source fades to fog_color.
 	darkness = CanvasModulate.new()
-	darkness.color = Color(0.07, 0.08, 0.13)
 	add_child(darkness)
 
 	player = Player.new()
 	add_child(player)
+	_apply_fog()
 
 	_build_hud()
 	world = get_node_or_null("World")
@@ -49,8 +107,50 @@ func _process(_delta: float) -> void:
 		map.set_player_position(player.global_position)
 	else:
 		PROP_MATERIAL.set_shader_parameter("player_pos", player.global_position)
-	_stamina_bar.value = player.stamina
-	_stamina_bar.modulate = Color(1, 0.4, 0.4) if player.exhausted else Color(1, 1, 1)
+		PINE_MATERIAL.set_shader_parameter("player_pos", player.global_position)
+
+
+## Pushes the Fog settings to the darkness and the player's vision light.
+func _apply_fog() -> void:
+	if darkness == null or player == null or player.light == null:
+		return
+	darkness.visible = fog_enabled
+	darkness.color = Color.WHITE.lerp(fog_color, fog_darkness)
+	var light: PointLight2D = player.light
+	light.enabled = fog_enabled
+	light.energy = vision_brightness
+	light.color = vision_tint
+	light.shadow_filter_smooth = shadow_softness
+	var tex := _make_vision_texture()
+	if light.texture != tex:
+		light.texture = tex
+	light.texture_scale = vision_radius * 2.0 / VISION_TEX_SIZE
+
+
+## Radial light texture: fully bright up to fog_start, then fades to zero at the
+## edge following fog_density. Outside the light only fog_color remains.
+func _make_vision_texture() -> Texture2D:
+	if _vision_tex == null:
+		_vision_tex = GradientTexture2D.new()
+		_vision_tex.fill = GradientTexture2D.FILL_RADIAL
+		_vision_tex.fill_from = Vector2(0.5, 0.5)
+		_vision_tex.fill_to = Vector2(0.5, 0.0)
+		_vision_tex.width = VISION_TEX_SIZE
+	var g := Gradient.new()
+	var offsets := PackedFloat32Array()
+	var colors := PackedColorArray()
+	var steps := 32
+	for i in steps + 1:
+		var t := float(i) / steps
+		var k := clampf((t - fog_start) / maxf(1.0 - fog_start, 0.001), 0.0, 1.0)
+		var a := pow(1.0 - smoothstep(0.0, 1.0, k), fog_density)
+		offsets.append(t)
+		colors.append(Color(1, 1, 1, a))
+	g.offsets = offsets
+	g.colors = colors
+	_vision_tex.gradient = g
+	_vision_tex.height = maxi(int(VISION_TEX_SIZE * vision_squash), 8)
+	return _vision_tex
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -58,8 +158,6 @@ func _unhandled_input(event: InputEvent) -> void:
 		_new_map(randi())
 	elif event.is_action_pressed("toggle_fog"):
 		fog_enabled = not fog_enabled
-		darkness.visible = fog_enabled
-		player.light.enabled = fog_enabled
 	elif event is InputEventMouseButton and event.pressed:
 		var cam: Camera2D = player.camera
 		if event.button_index == MOUSE_BUTTON_WHEEL_UP:
@@ -144,21 +242,6 @@ func _build_hud() -> void:
 	_hud_label.add_theme_color_override("font_outline_color", Color.BLACK)
 	_hud_label.add_theme_constant_override("outline_size", 4)
 	hud.add_child(_hud_label)
-
-	_stamina_bar = ProgressBar.new()
-	_stamina_bar.position = Vector2(16, 44)
-	_stamina_bar.size = Vector2(220, 14)
-	_stamina_bar.max_value = 100
-	_stamina_bar.show_percentage = false
-	var bg := StyleBoxFlat.new()
-	bg.bg_color = Color(0, 0, 0, 0.5)
-	bg.set_corner_radius_all(4)
-	var fill := StyleBoxFlat.new()
-	fill.bg_color = Color(0.85, 0.75, 0.35)
-	fill.set_corner_radius_all(4)
-	_stamina_bar.add_theme_stylebox_override("background", bg)
-	_stamina_bar.add_theme_stylebox_override("fill", fill)
-	hud.add_child(_stamina_bar)
 
 
 func _setup_input() -> void:

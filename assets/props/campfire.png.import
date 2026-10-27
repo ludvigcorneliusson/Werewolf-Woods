@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://bmfo4twpj4n05"
-path="res://.godot/imported/ComfyUI_00021_.png-9b28188c830f71a3c368c6e8988873ba.ctex"
+uid="uid://dwil1elwvsjqk"
+path="res://.godot/imported/campfire.png-93ca34d877e38d240c2043be55cc5d32.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/props/ComfyUI_00021_.png"
-dest_files=["res://.godot/imported/ComfyUI_00021_.png-9b28188c830f71a3c368c6e8988873ba.ctex"]
+source_file="res://assets/props/campfire.png"
+dest_files=["res://.godot/imported/campfire.png-93ca34d877e38d240c2043be55cc5d32.ctex"]
 
 [params]
 

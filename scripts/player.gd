@@ -1,5 +1,5 @@
 extends CharacterBody2D
-## The settler. Movement with sprint + stamina, pixel-art sprite that switches
+## The settler. Movement with unlimited sprint, pixel-art sprite that switches
 ## between up/down/right (left = mirrored right), a vision light that acts as
 ## fog of war, and the following camera. Origin = feet.
 ##
@@ -10,9 +10,6 @@ extends CharacterBody2D
 const WALK_SPEED := 120.0
 const SPRINT_SPEED := 200.0
 const DEPTH_SQUASH := 0.85       # up/down moves a bit slower on screen (3/4 view)
-const STAMINA_DRAIN := 32.0      # per second while sprinting
-const STAMINA_REGEN := 18.0      # per second otherwise
-const EXHAUST_RECOVER := 30.0    # stamina needed before you can sprint again
 
 const TEX_UP := preload("res://assets/characters/settler_up.png")
 const TEX_DOWN := preload("res://assets/characters/settler_down.png")
@@ -28,8 +25,6 @@ const RUN := {
 ## "cycle" = seconds per full run cycle (two steps) at WALK_SPEED, per direction.
 ## Higher = slower legs. Sprint plays faster automatically. Left uses "right".
 
-var stamina := 100.0
-var exhausted := false
 var facing := Vector2.DOWN
 var light: PointLight2D
 var camera: Camera2D
@@ -58,11 +53,8 @@ func _ready() -> void:
 	# Vision: a light that casts shadows behind trunks and bushes. Ground and
 	# characters in shadow stay dark (line-of-sight fog of war). Props are lit
 	# but not shadowed so the forest stays readable.
+	# Size, falloff and brightness are set by main.gd from its Fog settings.
 	light = PointLight2D.new()
-	light.texture = _make_light_texture()
-	light.texture_scale = 0.75
-	light.energy = 1.1
-	light.color = Color(0.9, 0.95, 1.0)
 	light.range_item_cull_mask = 1 | 2
 	light.shadow_enabled = true
 	light.shadow_item_cull_mask = 1
@@ -78,19 +70,11 @@ func _ready() -> void:
 	camera.make_current()
 
 
-func _physics_process(delta: float) -> void:
+func _physics_process(_delta: float) -> void:
 	var dir := Input.get_vector("move_left", "move_right", "move_up", "move_down")
 	_moving = dir != Vector2.ZERO
 
-	var sprinting := Input.is_action_pressed("sprint") and _moving and not exhausted
-	if sprinting:
-		stamina = maxf(stamina - STAMINA_DRAIN * delta, 0.0)
-		if stamina <= 0.0:
-			exhausted = true
-	else:
-		stamina = minf(stamina + STAMINA_REGEN * delta, 100.0)
-		if exhausted and stamina >= EXHAUST_RECOVER:
-			exhausted = false
+	var sprinting := Input.is_action_pressed("sprint") and _moving   # no stamina: sprint forever
 
 	var speed := SPRINT_SPEED if sprinting else WALK_SPEED
 	velocity = Vector2(dir.x, dir.y * DEPTH_SQUASH) * speed
@@ -171,18 +155,3 @@ func _draw() -> void:
 	draw_circle(Vector2.ZERO, 9.0, Color(0, 0, 0, 0.3))
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
-
-func _make_light_texture() -> Texture2D:
-	var g := Gradient.new()
-	g.set_color(0, Color(1, 1, 1, 1))
-	g.set_color(1, Color(1, 1, 1, 0))
-	g.add_point(0.55, Color(1, 1, 1, 0.85))
-	var tex := GradientTexture2D.new()
-	tex.gradient = g
-	tex.fill = GradientTexture2D.FILL_RADIAL
-	tex.fill_from = Vector2(0.5, 0.5)
-	tex.fill_to = Vector2(0.5, 0.0)
-	# Wider than tall: the vision circle looks like a circle on the tilted ground.
-	tex.width = 512
-	tex.height = 400
-	return tex

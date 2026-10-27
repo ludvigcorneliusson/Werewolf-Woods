@@ -1,0 +1,166 @@
+[gd_scene load_steps=14 format=3]
+
+[ext_resource type="Script" path="res://scripts/campfire.gd" id="1_ioc47"]
+[ext_resource type="Texture2D" path="res://assets/props/campfire.png" id="2_pmr76"]
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_7jdik"]
+radius = 11.0
+
+[sub_resource type="CanvasItemMaterial" id="CanvasItemMaterial_6vsur"]
+blend_mode = 1
+light_mode = 1
+
+[sub_resource type="Curve" id="Curve_6dcep"]
+_data = [Vector2(0, 1), 0.0, 0.0, 0, 0, Vector2(1, 0.25), 0.0, 0.0, 0, 0]
+point_count = 2
+
+[sub_resource type="Gradient" id="Gradient_t1yac"]
+offsets = PackedFloat32Array(0, 0.25, 0.6, 1)
+colors = PackedColorArray(1, 0.8, 0.4, 0.75, 1, 0.55, 0.15, 0.7, 0.85, 0.25, 0.05, 0.55, 0.4, 0.06, 0.03, 0)
+
+[sub_resource type="Curve" id="Curve_cybci"]
+_data = [Vector2(0, 1), 0.0, 0.0, 0, 0, Vector2(1, 0.4), 0.0, 0.0, 0, 0]
+point_count = 2
+
+[sub_resource type="Gradient" id="Gradient_imugd"]
+offsets = PackedFloat32Array(0, 0.5, 1)
+colors = PackedColorArray(1, 0.9, 0.6, 0.5, 1, 0.75, 0.3, 0.4, 1, 0.5, 0.15, 0)
+
+[sub_resource type="Gradient" id="Gradient_nx0pv"]
+offsets = PackedFloat32Array(0, 0.6, 1)
+colors = PackedColorArray(1, 0.85, 0.45, 1, 1, 0.45, 0.12, 0.9, 0.6, 0.15, 0.05, 0)
+
+[sub_resource type="Curve" id="Curve_2tpxj"]
+_data = [Vector2(0, 0.6), 0.0, 0.0, 0, 0, Vector2(1, 1), 0.0, 0.0, 0, 0]
+point_count = 2
+
+[sub_resource type="Gradient" id="Gradient_kqifa"]
+offsets = PackedFloat32Array(0, 0.15, 1)
+colors = PackedColorArray(0.35, 0.3, 0.28, 0, 0.35, 0.3, 0.28, 0.35, 0.2, 0.2, 0.2, 0)
+
+[sub_resource type="Gradient" id="Gradient_2gnbs"]
+offsets = PackedFloat32Array(0, 0.0625, 0.125, 0.1875, 0.25, 0.3125, 0.375, 0.4375, 0.5, 0.5625, 0.625, 0.6875, 0.75, 0.8125, 0.875, 0.9375, 1)
+colors = PackedColorArray(1, 1, 1, 1, 1, 1, 1, 0.9820919, 1, 1, 1, 0.93214136, 1, 1, 1, 0.8564837, 1, 1, 1, 0.7619773, 1, 1, 1, 0.65559864, 1, 1, 1, 0.5440978, 1, 1, 1, 0.4337047, 1, 1, 1, 0.329877, 1, 1, 1, 0.237085, 1, 1, 1, 0.15863247, 1, 1, 1, 0.09651212, 1, 1, 1, 0.05129937, 1, 1, 1, 0.022090776, 1, 1, 1, 0.006501961, 1, 1, 1, 0.00075969036, 1, 1, 1, 0)
+
+[sub_resource type="GradientTexture2D" id="GradientTexture2D_d8g2p"]
+gradient = SubResource("Gradient_2gnbs")
+width = 512
+height = 400
+fill = 1
+fill_from = Vector2(0.5, 0.5)
+fill_to = Vector2(0.5, 0)
+
+[node name="Campfire" type="Node2D"]
+script = ExtResource("1_ioc47")
+
+[node name="Sprite" type="Sprite2D" parent="."]
+light_mask = 2
+texture = ExtResource("2_pmr76")
+centered = false
+offset = Vector2(-17, -17)
+
+[node name="Body" type="StaticBody2D" parent="."]
+
+[node name="Collision" type="CollisionShape2D" parent="Body"]
+position = Vector2(0, -6)
+shape = SubResource("CircleShape2D_7jdik")
+
+[node name="Fire" type="CPUParticles2D" parent="."]
+material = SubResource("CanvasItemMaterial_6vsur")
+position = Vector2(0, -8)
+amount = 46
+lifetime = 0.8
+preprocess = 0.8
+randomness = 0.5
+lifetime_randomness = 0.35
+emission_shape = 3
+emission_rect_extents = Vector2(6, 1.5)
+direction = Vector2(0, -1)
+spread = 10.0
+gravity = Vector2(0, -55)
+initial_velocity_min = 12.0
+initial_velocity_max = 28.0
+tangential_accel_min = -14.0
+tangential_accel_max = 14.0
+damping_min = 2.0
+damping_max = 6.0
+scale_amount_min = 2.0
+scale_amount_max = 4.0
+scale_amount_curve = SubResource("Curve_6dcep")
+color_ramp = SubResource("Gradient_t1yac")
+hue_variation_min = -0.02
+hue_variation_max = 0.02
+
+[node name="Core" type="CPUParticles2D" parent="."]
+material = SubResource("CanvasItemMaterial_6vsur")
+position = Vector2(0, -7)
+amount = 12
+lifetime = 0.35
+preprocess = 0.35
+randomness = 0.5
+lifetime_randomness = 0.35
+emission_shape = 3
+emission_rect_extents = Vector2(3, 1)
+direction = Vector2(0, -1)
+spread = 8.0
+gravity = Vector2(0, -30)
+initial_velocity_min = 8.0
+initial_velocity_max = 16.0
+scale_amount_min = 2.0
+scale_amount_max = 3.0
+scale_amount_curve = SubResource("Curve_cybci")
+color_ramp = SubResource("Gradient_imugd")
+
+[node name="Embers" type="CPUParticles2D" parent="."]
+material = SubResource("CanvasItemMaterial_6vsur")
+position = Vector2(0, -10)
+amount = 10
+lifetime = 1.8
+preprocess = 1.8
+randomness = 0.5
+lifetime_randomness = 0.35
+emission_shape = 3
+emission_rect_extents = Vector2(5, 1)
+direction = Vector2(0, -1)
+spread = 28.0
+gravity = Vector2(0, -12)
+initial_velocity_min = 22.0
+initial_velocity_max = 42.0
+tangential_accel_min = -20.0
+tangential_accel_max = 20.0
+damping_min = 8.0
+damping_max = 14.0
+color_ramp = SubResource("Gradient_nx0pv")
+
+[node name="Smoke" type="CPUParticles2D" parent="."]
+light_mask = 2
+position = Vector2(0, -20)
+amount = 16
+lifetime = 2.6
+preprocess = 2.6
+randomness = 0.5
+lifetime_randomness = 0.35
+emission_shape = 3
+emission_rect_extents = Vector2(3, 1)
+direction = Vector2(0, -1)
+spread = 14.0
+gravity = Vector2(0, -6)
+initial_velocity_min = 8.0
+initial_velocity_max = 14.0
+tangential_accel_min = -6.0
+tangential_accel_max = 6.0
+scale_amount_min = 3.0
+scale_amount_max = 5.0
+scale_amount_curve = SubResource("Curve_2tpxj")
+color_ramp = SubResource("Gradient_kqifa")
+
+[node name="Light" type="PointLight2D" parent="."]
+position = Vector2(0, -8)
+color = Color(1, 0.62, 0.3, 1)
+energy = 1.35
+range_item_cull_mask = 3
+shadow_enabled = true
+shadow_filter = 1
+shadow_filter_smooth = 2.0
+texture = SubResource("GradientTexture2D_d8g2p")
+texture_scale = 0.7421875

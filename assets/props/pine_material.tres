@@ -1,0 +1,10 @@
+[gd_resource type="ShaderMaterial" load_steps=2 format=3]
+
+[ext_resource type="Shader" path="res://assets/props/prop_fade.gdshader" id="1_1et47"]
+
+[resource]
+shader = ExtResource("1_1et47")
+shader_parameter/player_pos = null
+shader_parameter/fade_radius = 38.0
+shader_parameter/faded_alpha = null
+shader_parameter/color_variance = true
