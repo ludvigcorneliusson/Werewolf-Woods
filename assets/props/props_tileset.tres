@@ -20,6 +20,8 @@
 [ext_resource type="PackedScene" path="res://assets/props/mossy_rock.tscn" id="18_dukac"]
 [ext_resource type="PackedScene" uid="uid://c3aele1vxt4ja" path="res://assets/props/fern_a.tscn" id="19_sf0lx"]
 
+[ext_resource type="PackedScene" path="res://assets/props/pine_tall_stump.tscn" id="20_ptstump"]
+
 [sub_resource type="TileSetScenesCollectionSource" id="TileSetScenesCollectionSource_hr3ne"]
 scenes/1/scene = ExtResource("1_bcyjq")
 scenes/2/scene = ExtResource("12_3s4to")
@@ -40,6 +42,7 @@ scenes/16/scene = ExtResource("8_rqd4p")
 scenes/17/scene = ExtResource("9_ftwy5")
 scenes/18/scene = ExtResource("10_ltgn0")
 scenes/19/scene = ExtResource("11_k2p3l")
+scenes/20/scene = ExtResource("20_ptstump")
 
 [resource]
 tile_size = Vector2i(8, 8)

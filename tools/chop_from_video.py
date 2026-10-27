@@ -1,9 +1,11 @@
 """Turns the green-screen axe-chop video (H3, settler facing right) into a pixel-art strip.
 
-Used for assets/characters/settler_chop_right.png. Usage, from any folder:
+Used for assets/characters/settler_chop_right.png (MiniMax_H3_00025) and
+settler_chop_left.png (ClipProj_H3_00005).
+Usage, from any folder:
   1. Extract every frame of the video into <work>/frames:
        ffmpeg -i chop.mp4 <work>/frames/f_%03d.png
-  2. python3 chop_from_video.py <work> <project folder>
+  2. python3 chop_from_video.py <work> <project folder> [right|left]
 It keys out the green, keeps only the frames that move (wind-up, swing, back to
 rest; the long still holds are dropped - the game holds those poses itself),
 shrinks everything with one shared scale so the standing pose is as tall as
@@ -19,8 +21,16 @@ from scipy import ndimage
 
 WORK = sys.argv[1] if len(sys.argv) > 1 else '.'
 PROJ = sys.argv[2] if len(sys.argv) > 2 else '.'
-# Video frames used (24 fps): rest, wind-up, swing (impact = 42), back to rest.
-FRAMES = [1] + list(range(4, 17)) + list(range(38, 44)) + list(range(77, 83))
+SIDE = sys.argv[3] if len(sys.argv) > 3 else 'right'
+# Video frames used (24 fps): rest, wind-up, swing, then back to rest.
+# The long still holds are left out; the game holds those poses itself.
+VIDEOS = {
+    # MiniMax_H3_00025 (facing right): impact = video frame 42.
+    'right': {'frames': [1] + list(range(4, 17)) + list(range(38, 44)) + list(range(77, 83)), 'impact': 42},
+    # ClipProj_H3_00005 (facing left): impact = video frame 23, held at 24.
+    'left': {'frames': [1] + list(range(3, 16)) + list(range(19, 25)) + list(range(31, 37)), 'impact': 23},
+}
+FRAMES = VIDEOS[SIDE]['frames']
 
 
 def load(i):
@@ -95,10 +105,10 @@ for i, (c, m) in enumerate(small):
     edge = m & ~ndimage.binary_erosion(m, structure=[[0, 1, 0], [1, 1, 1], [0, 1, 0]], border_value=0)
     img[edge] = dark
     strip.paste(Image.fromarray(np.dstack([img, m * 255]).astype(np.uint8), 'RGBA'), (i * W, 0))
-strip.save(f'{PROJ}/assets/characters/settler_chop_right.png')
+strip.save(f'{PROJ}/assets/characters/settler_chop_{SIDE}.png')
 
 # Foot point: middle of the feet in the rest pose, bottom of the frame.
 fm = frames[0][1][b0[3] - 25:b0[3], :]
 fx = np.where(fm)[1].mean()
 foot = (round((fx - x0) * k), round((b0[3] - y0) * k))
-print(f'frames={len(small)} size=({W}, {H}) offset=({-foot[0]}, {-foot[1] + 1}) impact_index={FRAMES.index(42)}')
+print(f'frames={len(small)} size=({W}, {H}) offset=({-foot[0]}, {-foot[1] + 1}) impact_index={FRAMES.index(VIDEOS[SIDE]["impact"])}')

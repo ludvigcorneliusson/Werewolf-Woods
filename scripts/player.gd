@@ -35,13 +35,19 @@ const RUN := {
 ## a footstep sound plays as the animation passes each one. The right and
 ## down_right strips hold two strides, so they have four steps.
 
-## Axe chop (left click), from the H3 video via tools/chop_from_video.py. Faces
-## right; mirrored for left. Facing up/down he chops toward his last sideways
-## direction. "durations" = how long each frame shows, in 1/fps steps: the
-## wind-up and the end of the swing are held a moment.
-const CHOP := {"tex": preload("res://assets/characters/settler_chop_right.png"), "frames": 26,
+## Axe chop (left click), from the H3 videos via tools/chop_from_video.py: one
+## strip per side (right = MiniMax_H3_00025, left = ClipProj_H3_00005). Facing
+## up/down he chops toward his last sideways side. "impact" = the frame where
+## the blade lands. "durations" = how long each frame shows, in 1/fps steps:
+## the top of the wind-up and the end of the swing are held a moment.
+const CHOP := {
+	"right": {"tex": preload("res://assets/characters/settler_chop_right.png"), "frames": 26,
 		"size": Vector2i(48, 48), "offset": Vector2(-21, -47), "fps": 30.0, "impact": 18,
-		"durations": {0: 0.5, 13: 4.0, 19: 5.0, 20: 1.2, 21: 1.2, 22: 1.2, 23: 1.2, 24: 1.2, 25: 1.2}}
+		"durations": {0: 0.5, 13: 4.0, 19: 5.0, 20: 1.2, 21: 1.2, 22: 1.2, 23: 1.2, 24: 1.2, 25: 1.2}},
+	"left": {"tex": preload("res://assets/characters/settler_chop_left.png"), "frames": 26,
+		"size": Vector2i(56, 50), "offset": Vector2(-32, -49), "fps": 30.0, "impact": 18,
+		"durations": {0: 0.5, 13: 4.0, 19: 5.0, 20: 1.2, 21: 1.2, 22: 1.2, 23: 1.2, 24: 1.2, 25: 1.2}},
+}
 ## How far in front of the feet the axe lands (world px) and how big the hit area is.
 const CHOP_REACH := Vector2(17.0, -3.0)
 const CHOP_HIT_RADIUS := 13.0
@@ -103,6 +109,10 @@ var _speed := 0.0
 ## Chopping speed (1 = as built; 1.5 = half again as fast). main.gd sets it.
 var chop_speed := 1.0
 var chopping := false
+## Tool in hand (the tools bar in hud.gd sets it). Left click chops only with the axe.
+var held_tool := "axe"
+## Push from a hit (world px/s); fades out quickly. main.gd sets it when you're attacked.
+var knockback := Vector2.ZERO
 var _chop_queued := false
 var _side := 1                     # last sideways facing: 1 right, -1 left
 var _offsets := {}
@@ -177,7 +187,8 @@ func _physics_process(_delta: float) -> void:
 	var sprinting := sprint_on and _moving   # no stamina: sprint forever
 
 	var speed := sprint_speed if sprinting else walk_speed
-	velocity = Vector2(dir.x, dir.y * DEPTH_SQUASH) * speed
+	velocity = Vector2(dir.x, dir.y * DEPTH_SQUASH) * speed + knockback
+	knockback = knockback.move_toward(Vector2.ZERO, 1400.0 * _delta)
 	if god_mode:
 		global_position += velocity * god_speed * _delta     # no collisions
 	else:
@@ -200,7 +211,7 @@ func _process(delta: float) -> void:
 
 func _unhandled_input(event: InputEvent) -> void:
 	# Clicks on menus/HUD never get here (the GUI takes them first).
-	if is_local and not ai_controlled and input_enabled and event.is_action_pressed("chop"):
+	if is_local and not ai_controlled and input_enabled and held_tool == "axe" and event.is_action_pressed("chop"):
 		_chop_queued = true
 
 
@@ -209,20 +220,21 @@ func _unhandled_input(event: InputEvent) -> void:
 func _start_chop() -> void:
 	chopping = true
 	_moving = false
-	sprite.flip_h = _side < 0
+	sprite.flip_h = false                 # each side has its own strip
 	sprite.speed_scale = chop_speed
-	sprite.play("chop_right")
+	sprite.play("chop_right" if _side > 0 else "chop_left")
 	sprite.frame = 0
 	_apply_flip_offset()
 
 
 func _on_frame_changed() -> void:
-	if chopping and sprite.animation == "chop_right" and sprite.frame == CHOP.impact:
+	if chopping and sprite.animation.begins_with("chop_") \
+			and sprite.frame == CHOP[sprite.animation.trim_prefix("chop_")].impact:
 		chop_hit.emit(global_position + Vector2(CHOP_REACH.x * _side, CHOP_REACH.y), _side)
 
 
 func _on_animation_finished() -> void:
-	if sprite.animation == "chop_right":
+	if sprite.animation.begins_with("chop_"):
 		chopping = false
 		facing = Vector2(_side, 0.0)
 		_update_sprite()
@@ -381,15 +393,18 @@ func _build_frames() -> SpriteFrames:
 			sf.add_frame(run, at)
 		_offsets[run] = r.offset
 
-	sf.add_animation("chop_right")
-	sf.set_animation_loop("chop_right", false)
-	sf.set_animation_speed("chop_right", CHOP.fps)
-	for i in CHOP.frames:
-		var at := AtlasTexture.new()
-		at.atlas = CHOP.tex
-		at.region = Rect2(Vector2(i * CHOP.size.x, 0), Vector2(CHOP.size))
-		sf.add_frame("chop_right", at, CHOP.durations.get(i, 1.0))
-	_offsets["chop_right"] = CHOP.offset
+	for side: String in CHOP:
+		var c: Dictionary = CHOP[side]
+		var anim := "chop_" + side
+		sf.add_animation(anim)
+		sf.set_animation_loop(anim, false)
+		sf.set_animation_speed(anim, c.fps)
+		for i in c.frames:
+			var at := AtlasTexture.new()
+			at.atlas = c.tex
+			at.region = Rect2(Vector2(i * c.size.x, 0), Vector2(c.size))
+			sf.add_frame(anim, at, c.durations.get(i, 1.0))
+		_offsets[anim] = c.offset
 	return sf
 
 

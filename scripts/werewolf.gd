@@ -8,6 +8,8 @@ extends "res://scripts/player.gd"
 ## it wanders the forest, chases when it senses you, searches where it lost you,
 ## and catches you on contact.
 
+## Fired each time it lands a bite on the human (main.gd takes health off and
+## ends the round when it reaches 0). After a bite it backs off for a moment.
 signal caught(target: Node2D)
 
 const W_RIGHT := preload("res://assets/characters/werewolf_right.png")
@@ -32,6 +34,9 @@ var sense_radius := 320.0          # starts chasing within this distance (world 
 var lose_radius := 560.0           # gives up the chase beyond this
 var catch_radius := 20.0
 var search_time := 7.0             # seconds spent searching where it lost you
+var attack_interval := 1.2         # seconds between bites
+var _attack_left := 0.0
+var _recoil_left := 0.0
 
 enum State { WANDER, CHASE, SEARCH }
 var state := State.WANDER
@@ -126,9 +131,16 @@ func _think(delta: float) -> void:
 		return
 	var to_t := target.global_position - global_position
 	var dist := to_t.length()
+	_attack_left -= delta
+	_recoil_left -= delta
 
-	if dist < catch_radius:
-		_caught = true
+	if _recoil_left > 0.0:
+		# Just bit: back off a little before going again.
+		ai_dir = -to_t.normalized() * 0.6
+		return
+	if dist < catch_radius and _attack_left <= 0.0:
+		_attack_left = attack_interval
+		_recoil_left = 0.45
 		ai_dir = Vector2.ZERO
 		caught.emit(target)
 		return

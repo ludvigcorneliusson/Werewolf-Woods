@@ -53,6 +53,7 @@ const CHARACTER_MATERIAL := preload("res://assets/characters/character_material.
 const ABSORB := {
 	"pine_tall.png": [13.0, 0.9, 42.0, 0.06],
 	"pine_dark.png": [7.0, 0.9, 26.0, 0.06],
+	"pine_tall_stump.png": [12.0, 0.35, 0.0, 0.0],
 	"dead_pine.png": [11.0, 0.9, 20.0, 0.04],
 	"dead_tree.png": [11.0, 0.9, 20.0, 0.04],
 	"bush_big.png": [30.0, 0.35, 0.0, 0.0],
@@ -69,6 +70,7 @@ const TREES := ["pine_tall.png", "pine_dark.png", "dead_pine.png", "dead_tree.pn
 # (same offsets as the collision in tools/build_world.gd).
 const BASE_AT := {
 	"pine_tall.png": Vector2(0, -6), "pine_dark.png": Vector2(0, -3),
+	"pine_tall_stump.png": Vector2(0, -6),
 	"dead_pine.png": Vector2(-1, -7), "dead_tree.png": Vector2(2, -6),
 	"stump.png": Vector2(0, -7), "boulder.png": Vector2(0, -5), "mossy_rock.png": Vector2(0, -4),
 }

@@ -1,0 +1,37 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" uid="uid://cxvidcf7cremh" path="res://scripts/varied_prop.gd" id="1_iywur"]
+[ext_resource type="Material" path="res://assets/props/varied_material.tres" id="2_72o3u"]
+[ext_resource type="Texture2D" path="res://assets/props/pine_tall_stump.png" id="3_v1tfu"]
+
+[sub_resource type="OccluderPolygon2D" id="OccluderPolygon2D_vm4em"]
+polygon = PackedVector2Array(9.324811, 0.26642323, 11.456196, 3.1970782, 7.4598484, 3.1970782, 8.525541, 6.394156, 6.1277328, 6.9270024, 3.463501, 4.795617, 0.5328463, 3.9963477, -2.3978086, 7.1934257, -6.394156, 7.1934257, -5.3284636, 2.930655, -10.656927, 3.4635012, -10.92335, 1.3321159, -9.058388, -1.5985389, -5.5, -4.3301272, -2.0206672e-15, -5, 5.5, -4.3301272, 9.526279, -2.5)
+
+[node name="PineTallStump" type="Node2D"]
+scale = Vector2(2.502285, 2.502285)
+script = ExtResource("1_iywur")
+min_scale = 2.0
+max_scale = 2.6
+hue_variance = 0.03
+saturation_variance = 0.2
+brightness_variance = 0.15
+
+[node name="Sprite" type="Sprite2D" parent="."]
+self_modulate = Color(0.5103194, 0.49815133, 0.48578492, 1)
+light_mask = 2
+material = ExtResource("2_72o3u")
+texture = ExtResource("3_v1tfu")
+centered = false
+offset = Vector2(-45, -162)
+
+[node name="Body" type="StaticBody2D" parent="."]
+
+[node name="@CollisionPolygon2D@2" type="CollisionPolygon2D" parent="Body"]
+position = Vector2(0.79926956, -6.793791)
+scale = Vector2(1.5, 1.5)
+polygon = PackedVector2Array(9.058388, 0, 10.923349, 2.930655, 7.4598484, 2.6642318, 8.259118, 6.1277328, 5.8613095, 6.394156, 3.463501, 4.529194, 0.2664231, 3.7299244, -2.3978086, 6.9270024, -5.86131, 6.9270024, -5.594887, 2.930655, -8.791965, 2.6642318, -11.189774, 2.930655, -8.6602545, -2.5, -5, -4.3301272, -1.83697e-15, -5, 5, -4.3301272, 8.6602545, -2.5)
+
+[node name="VisionBlocker" type="LightOccluder2D" parent="."]
+position = Vector2(0.79926956, -7.193425)
+scale = Vector2(1.1, 1.1)
+occluder = SubResource("OccluderPolygon2D_vm4em")

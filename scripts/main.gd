@@ -18,6 +18,9 @@ const Rain := preload("res://scripts/rain.gd")
 const AdvancedSettings := preload("res://scripts/advanced_settings.gd")
 const MusicPlayer := preload("res://scripts/music.gd")
 const TreeChopping := preload("res://scripts/tree_chopping.gd")
+const Inventory := preload("res://scripts/inventory.gd")
+const GameHud := preload("res://scripts/hud.gd")
+const Pickups := preload("res://scripts/pickups.gd")
 ## Shared by every prop scene; we feed it the player position so trees fade
 ## when the player walks behind them.
 const PROP_MATERIAL := preload("res://assets/props/prop_material.tres")
@@ -466,6 +469,36 @@ var _round_label: Label
 
 var _chopping: Node
 
+# --- Survival -------------------------------------------------------------------
+# Health (werewolf bites take it off; at 0 the round is lost), the backpack and
+# picking things up (E). The HUD shows health, the tools bar (1-4) and the
+# backpack (Tab / I).
+@export_group("Survival")
+## Full health.
+@export_range(1.0, 1000.0, 1.0) var max_health := 100.0
+## Health one werewolf bite takes.
+@export_range(0.0, 1000.0, 1.0) var werewolf_damage := 34.0
+## Seconds between werewolf bites while it's on you.
+@export_range(0.2, 10.0, 0.05, "suffix:s") var werewolf_bite_interval := 1.2
+## How hard a bite knocks you away (world px/s).
+@export_range(0.0, 2000.0, 10.0) var bite_knockback := 420.0
+## Health back per second once you haven't been hurt for a while (0 = none).
+@export_range(0.0, 50.0, 0.1) var health_regen := 0.5
+## Seconds without being hurt before health starts coming back.
+@export_range(0.0, 120.0, 0.5, "suffix:s") var regen_delay := 8.0
+## Backpack slots.
+@export_range(1, 30, 1) var inventory_slots := 6
+## How close you must be to pick something up (world px).
+@export_range(8.0, 120.0, 1.0, "suffix:px") var pickup_reach := 30.0
+@export_group("")
+
+var health := 100.0
+var _since_hurt := 999.0
+var _inventory: Node
+var _game_hud: CanvasLayer
+var _pickups: Node
+var _dead := false
+
 # --- Idle ---------------------------------------------------------------------
 # The settler breathes and sways slightly while standing still.
 @export_group("Idle")
@@ -629,6 +662,7 @@ func _ready() -> void:
 		player.connect("chop_hit", _chopping.on_chop_hit)
 	_chopping.tree_felled.connect(_on_tree_felled)
 	_apply_chopping()
+	_setup_survival()
 	_footprints = Footprints.new()
 	add_child(_footprints)
 	_footprints.walker = player
@@ -664,6 +698,7 @@ func _process(_delta: float) -> void:
 		_music.set_mood("day" if _day_night.phase == DayNight.Phase.DAY else "night")
 	_apply_sky()
 	_apply_rain_effects()
+	_update_health(_delta)
 	if map:
 		map.set_player_position(player.global_position)
 	else:
@@ -851,6 +886,37 @@ func _on_night() -> void:
 
 
 ## Rebuilds which cells hold tree trunks (from the props) and the campfire light.
+func _setup_survival() -> void:
+	health = max_health
+	_inventory = Inventory.new(inventory_slots)
+	add_child(_inventory)
+	_game_hud = GameHud.new()
+	_game_hud.inventory = _inventory
+	add_child(_game_hud)
+	_game_hud.tool_selected.connect(func(id: String): if is_instance_valid(player): player.set("held_tool", id))
+	_game_hud.set_health(health, max_health)
+	_pickups = Pickups.new()
+	_pickups.player = player
+	_pickups.world = world
+	_pickups.inventory = _inventory
+	_pickups.hud = _game_hud
+	_pickups.reach = pickup_reach
+	add_child(_pickups)
+	if _chopping:
+		_chopping.pickups = _pickups
+
+
+## Health back after a while without being hurt.
+func _update_health(delta: float) -> void:
+	_since_hurt += delta
+	if _dead or health >= max_health or health_regen <= 0.0 or _since_hurt < regen_delay:
+		return
+	var before := ceili(health)
+	health = minf(health + health_regen * delta, max_health)
+	if ceili(health) != before and _game_hud:
+		_game_hud.set_health(health, max_health)
+
+
 func _apply_chopping() -> void:
 	if _chopping:
 		_chopping.hits_to_fell = tree_hits
@@ -891,6 +957,12 @@ func _unhandled_input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 	elif _escape_menu and _escape_menu.is_open():
 		return                              # no game hotkeys while the menu is open
+	elif event.is_action_pressed("pickup") and _pickups:
+		_pickups.try_pick()
+	elif event.is_action_pressed("inventory") and _game_hud and _game_hud.visible:
+		_game_hud.toggle_inventory()
+	elif _game_hud and _game_hud.visible and _tool_key(event) >= 0:
+		_game_hud.select_tool(_tool_key(event))
 	elif event.is_action_pressed("regenerate") and map:
 		_new_map(randi())
 	elif event.is_action_pressed("skip_time"):
@@ -910,6 +982,14 @@ func _unhandled_input(event: InputEvent) -> void:
 			cam.zoom = (cam.zoom * 1.15).clamp(Vector2(0.12, 0.12), Vector2(6, 6))
 		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
 			cam.zoom = (cam.zoom / 1.15).clamp(Vector2(0.12, 0.12), Vector2(6, 6))
+
+
+## 0-3 when one of the tool keys (1-4) was pressed, else -1.
+func _tool_key(event: InputEvent) -> int:
+	for i in 4:
+		if event.is_action_pressed("tool_%d" % (i + 1)):
+			return i
+	return -1
 
 
 ## God mode: no fog, mouse-wheel zoom, no collisions, fast movement, free camera.
@@ -1041,6 +1121,13 @@ func _become_werewolf() -> void:
 	wolf.camera.reset_smoothing()
 	old.queue_free()
 	player = wolf
+	wolf.held_tool = ""                       # no axe for the werewolf
+	if _game_hud:
+		_game_hud.visible = false          # health, tools and backpack are the settler's
+	if _pickups:
+		_pickups.enabled = false
+	if _chopping:
+		_chopping.player = wolf
 	if _footprints:
 		_footprints.walker = null          # only the villager leaves footprints
 	_dark.player = wolf
@@ -1084,8 +1171,24 @@ func _spawn_ai_werewolf() -> void:
 	_flash("The werewolf is awake...", 3.0)
 
 
+## A werewolf bite: lose health and get knocked away; at 0 the round is lost.
 func _on_caught(_who: Node2D) -> void:
-	_flash("You were caught!", 0.0)
+	if _dead:
+		return
+	health = maxf(health - werewolf_damage, 0.0)
+	_since_hurt = 0.0
+	if _game_hud:
+		_game_hud.set_health(health, max_health, true)
+	if is_instance_valid(werewolf) and is_instance_valid(player):
+		werewolf.set("attack_interval", werewolf_bite_interval)
+		var away: Vector2 = (player.global_position - werewolf.global_position).normalized()
+		player.set("knockback", away * bite_knockback)
+	if health > 0.0:
+		return
+	_dead = true
+	if is_instance_valid(werewolf):
+		werewolf.set("_caught", true)            # stops hunting
+	_flash("You were killed!", 0.0)
 	player.set_physics_process(false)
 	get_tree().create_timer(3.0).timeout.connect(func(): get_tree().reload_current_scene())
 
@@ -1188,7 +1291,7 @@ func _setup_painted_world() -> void:
 	player.camera.zoom = Vector2(camera_zoom, camera_zoom)   # Camera settings on Main
 	_add_world_borders()
 	player.camera.reset_smoothing()
-	_hud_label.text = "Seed %d (%s)   |   WASD move · Shift sprint · Click chop · F god mode · N skip time · T rain · F11 fullscreen" % [GameSettings.map_seed, GameSettings.map_size] + (" · Mouse wheel zoom" if scroll_zoom else "")
+	_hud_label.text = "Seed %d (%s)   |   WASD move · Shift sprint · Click chop · E pick up · Tab backpack · 1-4 tools · F god mode · N skip time · T rain · F11 fullscreen" % [GameSettings.map_seed, GameSettings.map_size] + (" · Mouse wheel zoom" if scroll_zoom else "")
 
 
 func _add_world_borders() -> void:
@@ -1256,6 +1359,12 @@ func _setup_input() -> void:
 		"skip_time": [KEY_N],
 		"toggle_rain": [KEY_T],
 		"toggle_fullscreen": [KEY_F11],
+		"pickup": [KEY_E],
+		"inventory": [KEY_TAB, KEY_I],
+		"tool_1": [KEY_1],
+		"tool_2": [KEY_2],
+		"tool_3": [KEY_3],
+		"tool_4": [KEY_4],
 	}
 	if not InputMap.has_action("chop"):
 		InputMap.add_action("chop")

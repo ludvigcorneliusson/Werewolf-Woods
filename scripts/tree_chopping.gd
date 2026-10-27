@@ -10,17 +10,32 @@ signal tree_felled(tree: Node2D)
 const LIVING := ["pine_tall.png", "pine_dark.png"]
 const DEAD := ["dead_pine.png", "dead_tree.png"]
 const STUMP_SCENE := "res://assets/props/stump.tscn"
+## Trees that split when felled: the moment it goes, the tree's own picture is
+## cut in two at "cut" (art row): the top falls, pivoting on the trunk at the
+## cut; the bottom stays and gets the cut face (stump_tex, made by
+## tools/make_pine_stump.py from the same art, so nothing jumps). Afterwards the
+## tree becomes stump_scene, which has the tree's size/colour/flip settings and
+## so rolls the identical look from its map position.
+const SPLIT := {
+	"pine_tall.png": {"cut": 144, "stump_tex": "res://assets/props/pine_tall_stump.png",
+			"stump_scene": "res://assets/props/pine_tall_stump.tscn"},
+}
 ## Stump size per tree image, x the tree's own size, so the stump matches the trunk.
 const STUMP_SCALE := {"pine_tall.png": 0.8, "pine_dark.png": 0.45, "dead_pine.png": 0.6, "dead_tree.png": 0.65}
 const CHOP_SOUND := "res://assets/sounds/chop.wav"
 const FALL_SOUND := "res://assets/sounds/tree_fall.wav"
 
 var player: Node2D
+var pickups: Node                 # scripts/pickups.gd: felled trees drop logs and twigs
+## What a felled tree drops: [logs, twigs min, twigs max] per tree image.
+const DROPS := {"pine_tall.png": [2, 2, 3], "pine_dark.png": [1, 1, 2],
+		"dead_pine.png": [1, 2, 4], "dead_tree.png": [1, 2, 4]}
 var hits_to_fell := 4             # living pines
 var dead_hits_to_fell := 2        # dead trees are dry and brittle
 var hit_radius := 13.0            # world px around the blade
 var volume_db := -4.0
 var fall_time := 1.1              # seconds for a tree to topple
+var face_delay := 0.3             # split trees: seconds into the fall before the cut face shows
 
 var _hits := {}                   # tree instance id -> hits so far
 var _chop_sound: AudioStream
@@ -82,6 +97,8 @@ func _tree_at(point: Vector2) -> Node2D:
 
 
 func _image(prop: Node) -> String:
+	if prop.has_meta("tree_image"):
+		return prop.get_meta("tree_image")
 	var sprite := prop.get_node_or_null("Sprite") as Sprite2D
 	if sprite == null or sprite.texture == null:
 		return ""
@@ -127,12 +144,17 @@ func _chips(point: Vector2, side: int) -> void:
 ## Topples the tree away from you, then leaves a stump where it stood.
 func _fell(tree: Node2D, side: int) -> void:
 	tree.set_meta("felling", true)
-	# You can walk (and see) through it straight away.
-	for part in ["Body", "VisionBlocker"]:
-		var n := tree.get_node_or_null(part)
-		if n:
-			n.queue_free()
-	var sprite := tree.get_node_or_null("Sprite") as Node2D
+	tree.set_meta("tree_image", _image(tree))       # the split swaps the textures below
+	var sprite := tree.get_node_or_null("Sprite") as Sprite2D
+	var spec: Dictionary = SPLIT.get(_image(tree), {})
+	if not spec.is_empty() and sprite:
+		_split(tree, sprite, spec)        # the stump (and its collision) stays
+	else:
+		# You can walk (and see) through it straight away.
+		for part in ["Body", "VisionBlocker"]:
+			var n := tree.get_node_or_null(part)
+			if n:
+				n.queue_free()
 	_sound(_fall_sound, tree.global_position, randf_range(0.95, 1.05))
 	if sprite:
 		var t := tree.create_tween()
@@ -142,10 +164,70 @@ func _fell(tree: Node2D, side: int) -> void:
 		t.tween_property(sprite, "rotation", side * PI * 0.44, 0.08)      # small bounce on landing
 		t.tween_property(sprite, "rotation", side * PI * 0.47, 0.1)
 		t.tween_callback(_dust.bind(tree.global_position + Vector2(side * _length(tree) * 0.5, -4.0)))
+		t.tween_callback(_drop_wood.bind(tree, side))
 		t.tween_interval(0.25)
 		t.tween_callback(_replace_with_stump.bind(tree))
 	else:
 		_replace_with_stump(tree)
+
+
+## Cuts the tree's picture in two at the cut row: the top (pivoting at the cut,
+## so it can fall) and the stump below (same pixels, then the cut face).
+## Both halves are full-size copies of the tree image with the other half
+## cleared, drawn exactly where the whole tree was: with the project's pixel
+## snapping on, that's what keeps the swap invisible.
+func _split(tree: Node2D, sprite: Sprite2D, spec: Dictionary) -> void:
+	var cut: int = spec.cut
+	var halves := _halves(sprite.texture, cut)
+	var whole_offset := sprite.offset
+	var stump := Sprite2D.new()
+	stump.name = "Stump"
+	stump.texture = halves[1]
+	stump.centered = false
+	stump.offset = whole_offset
+	stump.flip_h = sprite.flip_h
+	stump.material = sprite.material
+	stump.light_mask = sprite.light_mask
+	stump.texture_filter = sprite.texture_filter
+	stump.self_modulate = Color(sprite.self_modulate, 0.5)     # same colour, no sway
+	tree.add_child(stump)
+	tree.move_child(stump, sprite.get_index())                 # behind the top
+	# Top: pivots on the trunk at the cut. The pivot is put on a whole screen
+	# pixel (world px x the tree's size) so pixel snapping doesn't nudge it.
+	var top_tex: Texture2D = halves[0]
+	sprite.texture = top_tex
+	var size := top_tex.get_size()
+	var s := absf(tree.global_scale.y)
+	var pivot := Vector2(whole_offset.x + size.x / 2.0, whole_offset.y + cut)
+	pivot = (pivot * s).round() / s
+	sprite.position = pivot
+	sprite.offset = whole_offset - pivot
+	# Once the top has visibly tipped away from the stump, show the cut face.
+	var stump_tex := load(spec.stump_tex) as Texture2D
+	if stump_tex:
+		get_tree().create_timer(face_delay, false).timeout.connect(func():
+			if is_instance_valid(stump):
+				stump.texture = stump_tex)
+
+
+var _halves_cache := {}
+
+## [top, bottom] textures: the tree image with the rows below / above the cut cleared.
+func _halves(tex: Texture2D, cut: int) -> Array:
+	var key := "%s:%d" % [tex.resource_path, cut]
+	if not _halves_cache.has(key):
+		var img := tex.get_image()
+		if img.is_compressed():
+			img.decompress()
+		img.convert(Image.FORMAT_RGBA8)
+		var top := img.duplicate() as Image
+		var bottom := img.duplicate() as Image
+		var w := img.get_width()
+		var h := img.get_height()
+		top.fill_rect(Rect2i(0, cut, w, h - cut), Color(0, 0, 0, 0))
+		bottom.fill_rect(Rect2i(0, 0, w, cut), Color(0, 0, 0, 0))
+		_halves_cache[key] = [ImageTexture.create_from_image(top), ImageTexture.create_from_image(bottom)]
+	return _halves_cache[key]
 
 
 ## Rough length of the tree in world px (for where the dust lands).
@@ -154,6 +236,25 @@ func _length(tree: Node2D) -> float:
 	if sprite == null or sprite.texture == null:
 		return 100.0
 	return sprite.texture.get_height() * tree.scale.y
+
+
+## Logs and twigs scattered along where the trunk came down.
+func _drop_wood(tree: Node2D, side: int) -> void:
+	if pickups == null or not is_instance_valid(tree):
+		return
+	var d: Array = DROPS.get(_image(tree), [1, 1, 2])
+	var base := tree.global_position
+	var length := _length(tree)
+	var items := []
+	for i in d[0]:
+		items.append("log")
+	for i in randi_range(d[1], d[2]):
+		items.append("twig")
+	for i in items.size():
+		# Logs from the trunk end, twigs further out where the branches were.
+		var f := randf_range(0.18, 0.45) if items[i] == "log" else randf_range(0.4, 0.9)
+		var at := base + Vector2(side * length * f, randf_range(-10.0, 14.0))
+		pickups.spawn_drop(items[i], at, base + Vector2(side * length * f, -10.0))
 
 
 func _dust(at: Vector2) -> void:
@@ -188,21 +289,26 @@ func _replace_with_stump(tree: Node2D) -> void:
 		return
 	var parent := tree.get_parent()
 	var layer := parent as TileMapLayer
+	var spec: Dictionary = SPLIT.get(_image(tree), {})
+	var split := not spec.is_empty()
+	var scene_path: String = spec.stump_scene if split else STUMP_SCENE
 	var stump_scale := tree.scale.x * float(STUMP_SCALE.get(_image(tree), 0.7))
 	var at := tree.position
-	var stump_id := _scene_tile(layer, STUMP_SCENE) if layer else -1
+	var stump_id := _scene_tile(layer, scene_path) if layer else -1
 	if layer and stump_id >= 0 and tree.position == layer.map_to_local(layer.local_to_map(tree.position)):
 		# Painted/generated props are scene tiles: swap the tile.
 		var cell := layer.local_to_map(tree.position)
 		layer.erase_cell(cell)
 		layer.set_cell(cell, 0, Vector2i.ZERO, stump_id)
-		_size_stump.call_deferred(layer, at, stump_scale)
+		if not split:
+			_size_stump.call_deferred(layer, at, stump_scale)
 	else:
 		# A scene placed by hand: put a stump node in its place.
-		var stump := (load(STUMP_SCENE) as PackedScene).instantiate() as Node2D
+		var stump := (load(scene_path) as PackedScene).instantiate() as Node2D
 		stump.position = tree.position
 		parent.add_child(stump)
-		stump.scale = Vector2(stump_scale, stump_scale)
+		if not split:
+			stump.scale = Vector2(stump_scale, stump_scale)
 		tree.queue_free()
 	tree_felled.emit(tree)
 
